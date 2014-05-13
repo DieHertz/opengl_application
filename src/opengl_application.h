@@ -36,7 +36,9 @@ public:
         glfwSetMouseButtonCallback(p_window, [] (GLFWwindow* w, int button, int action, int mods) {
             auto p_handler = static_cast<Handler*>(glfwGetWindowUserPointer(w));
             assert(p_handler);
-            p_handler->onMouseButton(button, action, mods);
+            double x, y;
+            glfwGetCursorPos(w, &x, &y);
+            p_handler->onMouseButton(button, action, mods, x, y);
         });
         glfwSetFramebufferSizeCallback(p_window, [] (GLFWwindow* w, int width, int height) {
             auto p_handler = static_cast<Handler*>(glfwGetWindowUserPointer(w));

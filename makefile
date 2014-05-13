@@ -2,7 +2,7 @@ CXX_FLAGS   = -std=c++11
 LD_FLAGS    = -lglfw3 -framework opengl
 OUT_DIR     = bin
 OUT_FILE    = ogl_test
-INCLUDES    = -Isrc
+INCLUDES    = -Isrc -Iglm
 
 SRC_FILES   = \
 	src/main.cpp src/picopng.cpp \
