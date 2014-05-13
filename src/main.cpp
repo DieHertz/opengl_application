@@ -9,11 +9,12 @@ class handler {
     GLuint ball_program_id;
     GLuint ball_vao_id;
 
+    GLuint sampler_loc;
+
 public:
     void onContextCreated() {
-        std::cout << glGetString(GL_VERSION) << '\n';
-
         ball_diffuse_tex_id = gl::load_png_texture("textures/ball_albedo.png");
+
         ball_vao_id = CreateIcosahedron();
 
         const std::pair<const char*, GLuint> ball_shaders[] {
@@ -23,6 +24,7 @@ public:
 
         ball_program_id = gl::load_shader_program(ball_shaders);
         glBindFragDataLocation(ball_program_id, 0, "f_frag_data");
+        sampler_loc = glGetUniformLocation(ball_program_id, "s_tex");
 
         try {
             gl::link_shader_program(ball_program_id);
@@ -45,8 +47,10 @@ public:
         glClear(GL_COLOR_BUFFER_BIT);
 
         glUseProgram(ball_program_id);
+        glUniform1i(sampler_loc, 0);
+        glBindTexture(GL_TEXTURE_2D, ball_diffuse_tex_id);
         glBindVertexArray(ball_vao_id);
-        glDrawElements(GL_TRIANGLES, 60, GL_UNSIGNED_INT, nullptr);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
     }
 };
 

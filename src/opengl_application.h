@@ -40,6 +40,7 @@ public:
         });
 
         glfwMakeContextCurrent(p_window);
+
         handler.onContextCreated();
     }
 
