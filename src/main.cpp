@@ -41,9 +41,13 @@ public:
 
     }
 
+    void onFramebufferResize(const int width, const int height) noexcept {
+        glViewport(0, 0, width, height);
+    }
+
     void onRender() noexcept {
         glClearColor(1, 0.5f, 0.25f, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(ball_program_id);
         glUniform1i(sampler_loc, 0);

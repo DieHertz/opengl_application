@@ -38,10 +38,19 @@ public:
             assert(p_handler);
             p_handler->onMouseButton(button, action, mods);
         });
+        glfwSetFramebufferSizeCallback(p_window, [] (GLFWwindow* w, int width, int height) {
+            auto p_handler = static_cast<Handler*>(glfwGetWindowUserPointer(w));
+            assert(p_handler);
+            p_handler->onFramebufferResize(width, height);
+        });
 
         glfwMakeContextCurrent(p_window);
 
         handler.onContextCreated();
+
+        int fb_width, fb_height;
+        glfwGetFramebufferSize(p_window, &fb_width, &fb_height);
+        handler.onFramebufferResize(fb_width, fb_height);
     }
 
     ~opengl_application() noexcept {
