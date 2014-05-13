@@ -1,11 +1,7 @@
 #ifndef gl_util_h
 #define gl_util_h
 
-#ifdef __APPLE__
-#include <OpenGL/gl3.h>
-#else
-#include <GL/gl3.h>
-#endif
+#include "gl.h"
 #include <vector>
 #include <string>
 #include <fstream>

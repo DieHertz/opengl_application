@@ -4,7 +4,9 @@ OUT_DIR     = bin
 OUT_FILE    = ogl_test
 INCLUDES    = -Isrc
 
-SRC_FILES   = src/main.cpp src/picopng.cpp src/gl/util.cpp
+SRC_FILES   = \
+	src/main.cpp src/picopng.cpp \
+	src/gl/util.cpp src/mesh/mesh.cpp
 
 ${OUT_DIR}/${OUT_FILE}: ${SRC_FILES}
 	g++ ${SRC_FILES} -o ${OUT_DIR}/${OUT_FILE} ${INCLUDES} ${CXX_FLAGS} ${LD_FLAGS}

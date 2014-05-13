@@ -1,13 +1,12 @@
 #include "opengl_application.h"
+#include "mesh/mesh.h"
 #include "gl/util.h"
 #include <iostream>
 
-#include "junk_create_icosahedron.h"
-
 class handler {
+    mesh::mesh_data ball;
     GLuint ball_diffuse_tex_id;
     GLuint ball_program_id;
-    GLuint ball_vao_id;
 
     GLuint sampler_loc;
 
@@ -15,7 +14,7 @@ public:
     void onContextCreated() {
         ball_diffuse_tex_id = gl::load_png_texture("textures/ball_albedo.png");
 
-        ball_vao_id = CreateIcosahedron();
+        ball = mesh::gen_sphere(0.5f, 8);
 
         const std::pair<const char*, GLuint> ball_shaders[] {
             { "shaders/vertex.glsl", GL_VERTEX_SHADER },
@@ -49,8 +48,8 @@ public:
         glUseProgram(ball_program_id);
         glUniform1i(sampler_loc, 0);
         glBindTexture(GL_TEXTURE_2D, ball_diffuse_tex_id);
-        glBindVertexArray(ball_vao_id);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
+        glBindVertexArray(ball.vao_id);
+        glDrawArrays(GL_TRIANGLES, 0, ball.num_vertices);
     }
 };
 

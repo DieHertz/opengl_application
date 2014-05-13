@@ -6,6 +6,6 @@ in vec3 v_position;
 uniform sampler2D s_tex;
 
 void main() {
-    vec2 tex_coord = vec2(v_position.x, 1 - v_position.y);
+    vec2 tex_coord = vec2(v_position.x, 0.5 - v_position.y);
     f_frag_data = texture(s_tex, tex_coord);
 }
