@@ -1,7 +1,7 @@
 #ifndef gl_util_h
 #define gl_util_h
 
-#include "gl.h"
+#include "gl_include.h"
 #include <vector>
 #include <string>
 #include <fstream>

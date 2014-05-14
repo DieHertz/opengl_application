@@ -1,5 +1,6 @@
 #include "util.h"
 #include "picopng.h"
+#include <cstdint>
 
 namespace gl {
 

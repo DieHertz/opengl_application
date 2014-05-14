@@ -1,3 +1,4 @@
+#include "noexcept.h"
 #include "opengl_application.h"
 #include "mesh/mesh.h"
 #include "gl/util.h"
@@ -11,9 +12,9 @@ class handler {
     GLuint ball_diffuse_tex_id;
     GLuint ball_program_id;
 
-    GLuint sampler_loc, mv_loc, mvp_loc;
+    GLuint diffuse_map_loc, mv_loc, mvp_loc, eye_position_loc;
 
-    glm::vec3 eye{0, 0, 2};
+    glm::vec3 eye{0, 0, 3};
     glm::vec3 center;
     glm::vec3 up{0, 1, 0};
 
@@ -51,9 +52,10 @@ class handler {
 
     void getUniformLocations(const GLuint program_id) {
         const std::pair<GLuint&, const char*> uniforms[] {
-            { sampler_loc, "u_tex" },
+            { diffuse_map_loc, "u_diffuse_map" },
             { mv_loc, "u_mp" },
             { mvp_loc, "u_mvp" },
+            { eye_position_loc, "u_eye_position" }
         };
 
         for (auto& uniform : uniforms) {
@@ -63,9 +65,11 @@ class handler {
 
 public:
     void onContextCreated() {
-        ball_diffuse_tex_id = gl::load_png_texture("textures/ball_albedo.png");
+        glEnable(GL_DEPTH_TEST);
 
-        ball = mesh::gen_sphere(0.5f, 8);
+        ball_diffuse_tex_id = gl::load_png_texture("textures/ball_diffuse.png");
+
+        ball = mesh::gen_sphere(0.5f, 32, 32);
 
         const std::pair<const char*, GLuint> ball_shaders[] {
             { "shaders/vertex.glsl", GL_VERTEX_SHADER },
@@ -85,7 +89,7 @@ public:
         getUniformLocations(ball_program_id);
     }
 
-    void onCursorMove(const double x, const double y) noexcept {
+    void onCursorMove(const double x, const double y) NOEXCEPT {
         if (!lmb_down) return;
 
         const auto factor = 1.0f;
@@ -99,7 +103,7 @@ public:
     }
 
     void onMouseButton(const int button, const int action, const int mods,
-        const double x, const double y) noexcept {
+        const double x, const double y) NOEXCEPT {
         lmb_down = button == 0 && action == 1;
 
         if (!lmb_down) return;
@@ -107,26 +111,27 @@ public:
         prev_mouse_pos = glm::vec2(x, y);
     }
 
-    void onFramebufferResize(const int width, const int height) noexcept {
+    void onFramebufferResize(const int width, const int height) NOEXCEPT {
         glViewport(0, 0, width, height);
         look_at(eye, center, up);
         perspective(60, static_cast<float>(width) / height, 0.1f, 5.0f);
     }
 
-    void onRender() noexcept {
-        glClearColor(1, 0.5f, 0.25f, 1);
+    void onRender() NOEXCEPT {
+        glClearColor(0.1f, 0.1f, 0.1f, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(ball_program_id);
-        glUniform1i(sampler_loc, 0);
+        glUniform1i(diffuse_map_loc, 0);
         glUniformMatrix4fv(mv_loc, 1, GL_FALSE, glm::value_ptr(mv));
         glUniformMatrix4fv(mvp_loc, 1, GL_FALSE, glm::value_ptr(mvp));
+        glUniform1fv(eye_position_loc, 4, glm::value_ptr(eye));
 
         glBindTexture(GL_TEXTURE_2D, ball_diffuse_tex_id);
 
         glBindVertexArray(ball.vao_id);
 
-        glDrawArrays(GL_TRIANGLES, 0, ball.num_vertices);
+        glDrawElements(ball.mode, ball.num_faces, GL_UNSIGNED_INT, nullptr);
     }
 };
 

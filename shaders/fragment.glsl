@@ -1,11 +1,16 @@
 #version 410
 
-out vec4 f_frag_data;
-in vec3 v_position;
+out vec4 f_frag_color;
 
-uniform sampler2D u_tex;
+in vec3 v_position;
+in vec3 v_normal;
+in vec2 v_tex_coord;
+
+uniform sampler2D u_diffuse_map;
+uniform mat4 u_mv;
+uniform mat4 u_mvp;
+uniform vec3 u_eye_position;
 
 void main() {
-    vec2 tex_coord = vec2(v_position.x, 0.5 - v_position.y);
-    f_frag_data = texture(u_tex, tex_coord);
+    f_frag_color = texture(u_diffuse_map, vec2(1, 1) - v_tex_coord);
 }

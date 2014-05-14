@@ -1,0 +1,54 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="src">
+      <UniqueIdentifier>{eb78d06e-5bb3-4aad-8d87-78f372c1f8ae}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\gl">
+      <UniqueIdentifier>{d2b789eb-447a-4d65-b48e-c8b99a203d82}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\mesh">
+      <UniqueIdentifier>{ad3c4780-3c41-441b-8686-9894a71d7a9c}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\mesh\mesh.cpp">
+      <Filter>src\mesh</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\main.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\picopng.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\gl\util.cpp">
+      <Filter>src\gl</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\mesh\mesh.h">
+      <Filter>src\mesh</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mesh\geometry.h">
+      <Filter>src\mesh</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\opengl_application.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\picopng.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\scope_exit.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\noexcept.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\gl\gl_include.h">
+      <Filter>src\gl</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\gl\util.h">
+      <Filter>src\gl</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

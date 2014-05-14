@@ -1,5 +1,7 @@
 #ifndef opengl_application_h
 #define opengl_application_h
+#include "noexcept.h"
+#include "gl/gl_include.h"
 #include <GLFW/glfw3.h>
 #include <cassert>
 #include <stdexcept>
@@ -48,6 +50,11 @@ public:
 
         glfwMakeContextCurrent(p_window);
 
+#ifdef _WIN32 
+        glewExperimental = GL_TRUE;
+        if (glewInit() != GLEW_OK) throw std::runtime_error{"glewInit() failed"};
+#endif
+
         handler.onContextCreated();
 
         int fb_width, fb_height;
@@ -55,12 +62,12 @@ public:
         handler.onFramebufferResize(fb_width, fb_height);
     }
 
-    ~opengl_application() noexcept {
+    ~opengl_application() NOEXCEPT {
         glfwDestroyWindow(p_window);
         glfwTerminate();
     }
 
-    void run() noexcept {
+    void run() NOEXCEPT {
         while (!glfwWindowShouldClose(p_window)) {
             handler.onRender();
 

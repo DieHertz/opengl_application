@@ -1,18 +1,19 @@
 #ifndef mesh_mesh_h
 #define mesh_mesh_h
 
-#include "gl/gl.h"
+#include "gl/gl_include.h"
 #include <cstddef>
 
 namespace mesh {
 
 struct mesh_data {
+    GLuint mode;
+    std::size_t num_faces;
     GLuint vao_id;
-    GLuint pos_id;
-    std::size_t num_vertices;
+    GLuint vbo_ids[4];
 };
 
-mesh_data gen_sphere(float radius, int subdivs);
+mesh_data gen_sphere(float radius, int rings, int sectors);
 
 } /* namespace mesh */
 
