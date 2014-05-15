@@ -2,13 +2,13 @@
 #define mesh_mesh_h
 
 #include "gl/gl_include.h"
-#include <cstddef>
 
 namespace mesh {
 
 struct mesh_data {
-    GLuint mode;
-    std::size_t num_faces;
+    GLenum mode;
+    size_t num_faces;
+    GLenum type;
     GLuint vao_id;
     GLuint vbo_ids[4];
 };

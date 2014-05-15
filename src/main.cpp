@@ -20,6 +20,7 @@ class handler {
 
     glm::mat4 model, view, projection;
     glm::mat4 mv, mvp;
+    glm::mat3 normal;
 
     bool lmb_down = false;
     glm::vec2 prev_mouse_pos;
@@ -131,7 +132,7 @@ public:
 
         glBindVertexArray(ball.vao_id);
 
-        glDrawElements(ball.mode, ball.num_faces, GL_UNSIGNED_INT, nullptr);
+        glDrawElements(ball.mode, ball.num_faces, ball.type, nullptr);
     }
 };
 

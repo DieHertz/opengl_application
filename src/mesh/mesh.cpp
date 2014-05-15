@@ -31,7 +31,7 @@ mesh_data gen_sphere(const float radius, const int rings, const int sectors) {
         }
     }
 
-    auto indices = std::vector<GLuint>{};
+    auto indices = std::vector<GLushort>{};
     indices.reserve(6 * rings * sectors);
 
     for (auto r = 0; r < rings; ++r) {
@@ -45,7 +45,7 @@ mesh_data gen_sphere(const float radius, const int rings, const int sectors) {
         }
     }
 
-    auto mesh = mesh_data{GL_TRIANGLES, indices.size()};
+    auto mesh = mesh_data{GL_TRIANGLES, indices.size(), GL_UNSIGNED_SHORT};
 
     glGenVertexArrays(1, &mesh.vao_id);
     glBindVertexArray(mesh.vao_id);
