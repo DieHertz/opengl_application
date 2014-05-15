@@ -77,7 +77,7 @@ public:
         };
 
         ball_program_id = gl::load_shader_program(ball_shaders);
-        glBindFragDataLocation(ball_program_id, 0, "f_frag_data");
+        glBindFragDataLocation(ball_program_id, 0, "f_frag_color");
 
         try {
             gl::link_shader_program(ball_program_id);
@@ -118,7 +118,7 @@ public:
     }
 
     void onRender() NOEXCEPT {
-        glClearColor(0.1f, 0.1f, 0.1f, 1);
+        glClearColor(1, 1, 1, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(ball_program_id);
