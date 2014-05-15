@@ -33,7 +33,7 @@ GLuint load_shader_program(const std::pair<const char*, GLuint> (&shaders)[N]) {
     return program_id;
 }
 
-void link_shader_program(GLuint program_id);
+void link_shader_program(GLuint program_id, bool delete_on_fail = true);
 
 GLuint load_png_texture(const char* name);
 

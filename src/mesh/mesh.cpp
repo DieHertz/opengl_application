@@ -1,8 +1,9 @@
 #include "mesh.h"
+#include "ext.h"
 #include <glm/vec2.hpp>
-#include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 #include <glm/gtc/constants.hpp>
+#include <glm/detail/func_geometric.hpp>
 #include <cmath>
 #include <vector>
 
@@ -50,7 +51,7 @@ mesh_data gen_sphere(const float radius, const int rings, const int sectors) {
     glGenVertexArrays(1, &mesh.vao_id);
     glBindVertexArray(mesh.vao_id);
 
-    glGenBuffers(sizeof(mesh.vbo_ids) / sizeof(mesh.vbo_ids[0]), mesh.vbo_ids);
+    glGenBuffers(array_length(mesh.vbo_ids), mesh.vbo_ids);
 
     glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo_ids[0]);
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vertices.front()), vertices.data(), GL_STATIC_DRAW);
@@ -69,6 +70,45 @@ mesh_data gen_sphere(const float radius, const int rings, const int sectors) {
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.vbo_ids[3]);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(indices.front()), indices.data(), GL_STATIC_DRAW);
+
+    return mesh;
+}
+
+mesh_data gen_quad(const glm::vec3 v1, const glm::vec3 v2, const glm::vec3 v3, const glm::vec3 v4) {
+    const glm::vec3 vertices[] { v1, v2, v3, v4 };
+    const glm::vec3 normals[] {
+        glm::normalize(glm::cross(v1 - v2, v1 - v4)),
+        glm::normalize(glm::cross(v2 - v3, v2 - v1)),
+        glm::normalize(glm::cross(v3 - v4, v3 - v2)),
+        glm::normalize(glm::cross(v4 - v1, v4 - v3))
+    };
+    const glm::vec2 tex_coords[] { { 0, 0 }, { 0, 1 }, { 1, 0 }, { 1, 1 } };
+    const GLushort indices[] { 0, 1, 2, 0, 2, 3 };
+
+    auto mesh = mesh_data{GL_TRIANGLES, array_length(indices), GL_UNSIGNED_SHORT};
+
+    glGenVertexArrays(1, &mesh.vao_id);
+    glBindVertexArray(mesh.vao_id);
+
+    glGenBuffers(array_length(mesh.vbo_ids), mesh.vbo_ids);
+
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo_ids[0]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(vertices[0]), 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo_ids[1]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(normals), normals, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(normals[0]), 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo_ids[2]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(tex_coords), tex_coords, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(tex_coords[0]), 0);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.vbo_ids[3]);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
     return mesh;
 }

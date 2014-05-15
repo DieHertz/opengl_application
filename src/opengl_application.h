@@ -35,6 +35,11 @@ public:
             assert(p_handler);
             p_handler->onCursorMove(x, y);
         });
+        glfwSetScrollCallback(p_window, [] (GLFWwindow* w, double dx, double dy) {
+            auto p_handler = static_cast<Handler*>(glfwGetWindowUserPointer(w));
+            assert(p_handler);
+            p_handler->onScroll(dx, dy);
+        });
         glfwSetMouseButtonCallback(p_window, [] (GLFWwindow* w, int button, int action, int mods) {
             auto p_handler = static_cast<Handler*>(glfwGetWindowUserPointer(w));
             assert(p_handler);

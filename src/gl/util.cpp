@@ -33,7 +33,7 @@ GLuint load_shader(const char* file_name, const GLuint type) {
     return shader_id;
 }
 
-void link_shader_program(const GLuint program_id) {
+void link_shader_program(const GLuint program_id, const bool delete_on_fail) {
     glLinkProgram(program_id);
 
     GLint linked;
@@ -46,6 +46,8 @@ void link_shader_program(const GLuint program_id) {
 
         auto info = std::string(info_len, char{});
         glGetProgramInfoLog(program_id, info_len, nullptr, &info[0]);
+
+        if (delete_on_fail) glDeleteProgram(program_id);
 
         throw std::runtime_error{"glLinkProgram() failed:\n" + info};
     }
