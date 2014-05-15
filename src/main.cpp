@@ -67,7 +67,6 @@ class handler {
         glUniformMatrix4fv(glGetUniformLocation(program_id, "u_mv"), 1, GL_FALSE, glm::value_ptr(mv));
         glUniformMatrix4fv(glGetUniformLocation(program_id, "u_mvp"), 1, GL_FALSE, glm::value_ptr(mvp));
         glUniformMatrix3fv(glGetUniformLocation(program_id, "u_normal_matrix"), 1, GL_FALSE, glm::value_ptr(normal_matrix));
-        glUniform1fv(glGetUniformLocation(program_id, "u_eye_position"), 4, glm::value_ptr(eye));
     }
 
     scene_object create_ball() {
@@ -104,6 +103,7 @@ class handler {
 public:
     void onContextCreated() {
         glEnable(GL_DEPTH_TEST);
+        glClearColor(0.06f, 0.06f, 0.06f, 1);
 
         ball = create_ball();
         plane = create_plane();
@@ -119,7 +119,7 @@ public:
         const auto factor = 1.0f;
         const auto diff = factor * (glm::vec2(x, y) - prev_mouse_pos);
         camera_left(diff.x);
-        // camera_up(-diff.y);
+        camera_up(-diff.y);
 
         look_at(eye, center, up);
 
@@ -151,7 +151,6 @@ public:
     }
 
     void onRender() NOEXCEPT {
-        glClearColor(1, 1, 1, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(ball.program_id);
