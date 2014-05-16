@@ -7,6 +7,8 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 
+const auto MAX_LIGHTS = 8;
+
 struct scene_object {
     mesh::mesh_data mesh;
     glm::vec4 diffuse_color;
@@ -40,6 +42,9 @@ class handler {
     GLuint transf_buffer_id;
     GLuint transf_binding_point = 1;
 
+    GLuint lights_buffer_id;
+    GLuint lights_binding_point = 2;
+
     bool lmb_down = false;
     glm::vec2 prev_mouse_pos;
 
@@ -57,11 +62,9 @@ class handler {
 
     void camera_up(const float degrees) {
         const auto ortho = glm::normalize(glm::cross(eye, up));
-        const auto eye = glm::vec4(this->eye, 1.0f);
-        const auto up = glm::vec4(this->up, 1.0f);
 
-        this->eye = glm::vec3(eye * glm::rotate(glm::mat4(), glm::radians(degrees), ortho));
-        this->up = glm::vec3(up * glm::rotate(glm::mat4(), glm::radians(degrees), ortho));
+        eye = glm::vec3(glm::vec4(eye, 0) * glm::rotate(glm::mat4(), glm::radians(degrees), ortho));
+        // this->up = glm::vec3(glm::vec4(eye, up) * glm::rotate(glm::mat4(), glm::radians(degrees), ortho));
     }
 
     void camera_left(const float degrees) {
@@ -73,11 +76,12 @@ class handler {
     void create_transf_ubo() {
         glGenBuffers(1, &transf_buffer_id);
         glBindBufferBase(GL_UNIFORM_BUFFER, transf_binding_point, transf_buffer_id);
+        glBufferData(GL_UNIFORM_BUFFER, sizeof(transformations), nullptr, GL_DYNAMIC_DRAW);
     }
 
     void update_transf_ubo() {
         glBindBuffer(GL_UNIFORM_BUFFER, transf_buffer_id);
-        glBufferData(GL_UNIFORM_BUFFER, sizeof(transformations), &transf, GL_DYNAMIC_DRAW);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(transformations), &transf);
     }
 
     scene_object create_ball() {
@@ -92,8 +96,11 @@ class handler {
         const auto program_id = gl::load_shader_program(shaders);
         gl::link_shader_program(program_id);
 
-        const auto block_index = glGetUniformBlockIndex(program_id, "transformations");
-        glUniformBlockBinding(program_id, block_index, transf_binding_point);
+        const auto transf_block_index = glGetUniformBlockIndex(program_id, "transformations");
+        glUniformBlockBinding(program_id, transf_block_index, transf_binding_point);
+
+        const auto lights_block_index = glGetUniformBlockIndex(program_id, "light_params");
+        glUniformBlockBinding(program_id, lights_block_index, lights_binding_point);
 
         return { mesh, { 0, 0, 0, 1 }, diffuse_tex_id, program_id };
     }
@@ -111,8 +118,11 @@ class handler {
         const auto program_id = gl::load_shader_program(shaders);
         gl::link_shader_program(program_id);
 
-        const auto block_index = glGetUniformBlockIndex(program_id, "transformations");
-        glUniformBlockBinding(program_id, block_index, transf_binding_point);
+        const auto transf_block_index = glGetUniformBlockIndex(program_id, "transformations");
+        glUniformBlockBinding(program_id, transf_block_index, transf_binding_point);
+
+        const auto lights_block_index = glGetUniformBlockIndex(program_id, "light_params");
+        glUniformBlockBinding(program_id, lights_block_index, lights_binding_point);
 
         return { mesh, { 0.039f, 0.424f, 0.012f, 1 }, 0, program_id };
     }
@@ -125,11 +135,20 @@ public:
         ball = create_ball();
         plane = create_plane();
         lights = {
-            { { 5, 5, 5, 1 }, { 1, 1, 1, 1 } },
-            { { -5, -4, 3, 1 }, { 1, 0.5, 1, 1 } }
+            { { 1, 0, 1, 1 }, { 1, 1, 1, 1 } },
+            { { -5, 4, 3, 1 }, { 1, 1, 1, 1 } },
         };
 
         create_transf_ubo();
+
+        glGenBuffers(1, &lights_buffer_id);
+        glBindBufferBase(GL_UNIFORM_BUFFER, lights_binding_point, lights_buffer_id);
+
+        const auto num_lights_offset = MAX_LIGHTS * sizeof(lights.front());
+        const auto num_lights = GLint(lights.size());
+        glBufferData(GL_UNIFORM_BUFFER, sizeof(num_lights) + num_lights_offset, nullptr, GL_DYNAMIC_DRAW);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, lights.size() * sizeof(lights.front()), lights.data());
+        glBufferSubData(GL_UNIFORM_BUFFER, num_lights_offset, sizeof(num_lights), &num_lights);
     }
 
     void onCursorMove(const double x, const double y) NOEXCEPT {
