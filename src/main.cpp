@@ -19,6 +19,12 @@ struct light {
     glm::vec4 color;
 };
 
+struct transformations {
+    glm::mat4 mv_matrix;
+    glm::mat4 mvp_matrix;
+    glm::mat4 normal_matrix;
+};
+
 class handler {
     scene_object ball;
     scene_object plane;
@@ -29,22 +35,24 @@ class handler {
     glm::vec3 up{0, 1, 0};
 
     glm::mat4 model, view, projection;
-    glm::mat4 mv, mvp;
-    glm::mat3 normal_matrix;
+    transformations transf;
+
+    GLuint transf_buffer_id;
+    GLuint transf_binding_point = 1;
 
     bool lmb_down = false;
     glm::vec2 prev_mouse_pos;
 
     void look_at(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up) {
         view = glm::lookAt(eye, center, up);
-        mv = view * model;
-        normal_matrix = glm::transpose(glm::inverse(glm::mat3(mv)));
-        mvp = projection * mv;
+        transf.mv_matrix = view * model;
+        transf.normal_matrix = glm::transpose(glm::inverse(transf.mv_matrix));
+        transf.mvp_matrix = projection * transf.mv_matrix;
     }
 
     void perspective(const float fovy, const float aspect, const float zNear, const float zFar) {
         projection = glm::perspective(glm::radians(fovy), aspect, zNear, zFar);
-        mvp = projection * mv;
+        transf.mvp_matrix = projection * transf.mv_matrix;
     }
 
     void camera_up(const float degrees) {
@@ -62,24 +70,30 @@ class handler {
         this->eye = glm::vec3(eye);
     }
 
-    void bindUniforms(const GLuint program_id) {
-        glUniform1i(glGetUniformLocation(program_id, "u_diffuse_map"), 0);
-        glUniformMatrix4fv(glGetUniformLocation(program_id, "u_mv"), 1, GL_FALSE, glm::value_ptr(mv));
-        glUniformMatrix4fv(glGetUniformLocation(program_id, "u_mvp"), 1, GL_FALSE, glm::value_ptr(mvp));
-        glUniformMatrix3fv(glGetUniformLocation(program_id, "u_normal_matrix"), 1, GL_FALSE, glm::value_ptr(normal_matrix));
+    void create_transf_ubo() {
+        glGenBuffers(1, &transf_buffer_id);
+        glBindBufferBase(GL_UNIFORM_BUFFER, transf_binding_point, transf_buffer_id);
+    }
+
+    void update_transf_ubo() {
+        glBindBuffer(GL_UNIFORM_BUFFER, transf_buffer_id);
+        glBufferData(GL_UNIFORM_BUFFER, sizeof(transformations), &transf, GL_DYNAMIC_DRAW);
     }
 
     scene_object create_ball() {
         const auto mesh = mesh::gen_sphere(0.5f, 32, 32);
         const auto diffuse_tex_id = gl::load_png_texture("textures/ball12_diffuse.png");
 
-        const std::pair<const char*, GLuint> shaders[] {
+        const std::pair<const char*, GLenum> shaders[] {
             { "shaders/lighting_vertex.glsl", GL_VERTEX_SHADER },
             { "shaders/lighting_fragment.glsl", GL_FRAGMENT_SHADER },
         };
 
         const auto program_id = gl::load_shader_program(shaders);
         gl::link_shader_program(program_id);
+
+        const auto block_index = glGetUniformBlockIndex(program_id, "transformations");
+        glUniformBlockBinding(program_id, block_index, transf_binding_point);
 
         return { mesh, { 0, 0, 0, 1 }, diffuse_tex_id, program_id };
     }
@@ -89,13 +103,16 @@ class handler {
             glm::vec3(-3, -0.5, -3), glm::vec3(-3, -0.5, 3),
             glm::vec3(3, -0.5, 3), glm::vec3(3, -0.5, -3));
 
-        const std::pair<const char*, GLuint> shaders[] {
+        const std::pair<const char*, GLenum> shaders[] {
             { "shaders/lighting_vertex.glsl", GL_VERTEX_SHADER },
             { "shaders/lighting_fragment.glsl", GL_FRAGMENT_SHADER },
         };
 
         const auto program_id = gl::load_shader_program(shaders);
         gl::link_shader_program(program_id);
+
+        const auto block_index = glGetUniformBlockIndex(program_id, "transformations");
+        glUniformBlockBinding(program_id, block_index, transf_binding_point);
 
         return { mesh, { 0.039f, 0.424f, 0.012f, 1 }, 0, program_id };
     }
@@ -111,6 +128,8 @@ public:
             { { 5, 5, 5, 1 }, { 1, 1, 1, 1 } },
             { { -5, -4, 3, 1 }, { 1, 0.5, 1, 1 } }
         };
+
+        create_transf_ubo();
     }
 
     void onCursorMove(const double x, const double y) NOEXCEPT {
@@ -122,6 +141,7 @@ public:
         camera_up(-diff.y);
 
         look_at(eye, center, up);
+        update_transf_ubo();
 
         prev_mouse_pos = glm::vec2(x, y);
     }
@@ -133,6 +153,7 @@ public:
 
         this->eye = eye;
         look_at(eye, center, up);
+        update_transf_ubo();
     }
 
     void onMouseButton(const int button, const int action, const int mods,
@@ -148,20 +169,20 @@ public:
         glViewport(0, 0, width, height);
         look_at(eye, center, up);
         perspective(60, static_cast<float>(width) / height, 0.1f, 10.0f);
+        update_transf_ubo();
     }
 
     void onRender() NOEXCEPT {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(ball.program_id);
-        bindUniforms(ball.program_id);
         glBindTexture(GL_TEXTURE_2D, ball.diffuse_tex_id);
         glUniform1i(glGetUniformLocation(ball.program_id, "u_textured"), true);
+        glUniform1i(glGetUniformLocation(ball.program_id, "u_diffuse_map"), 0);
         glBindVertexArray(ball.mesh.vao_id);
         glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
 
         glUseProgram(plane.program_id);
-        bindUniforms(plane.program_id);
         glUniform1i(glGetUniformLocation(plane.program_id, "u_textured"), false);
         glUniform4fv(glGetUniformLocation(plane.program_id, "u_diffuse"), 1, glm::value_ptr(plane.diffuse_color));
         glBindVertexArray(plane.mesh.vao_id);

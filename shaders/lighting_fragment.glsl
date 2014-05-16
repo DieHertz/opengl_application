@@ -1,4 +1,4 @@
-#version 410
+#version 410 core
 
 layout(location = 0) out vec4 frag_color;
 
@@ -6,9 +6,11 @@ in vec3 v_position;
 in vec3 v_normal;
 in vec2 v_tex_coord;
 
-uniform mat4 u_mv;
-uniform mat4 u_mvp;
-uniform mat3 u_normal_matrix;
+layout(std140) uniform transformations {
+    mat4 mv_matrix;
+    mat4 mvp_matrix;
+    mat3 normal_matrix;
+};
 uniform sampler2D u_diffuse_map;
 uniform bool u_textured;
 uniform vec4 u_diffuse;
@@ -18,9 +20,12 @@ struct light {
     vec4 color;
 };
 
+vec3 dehomogenize(vec4 original) {
+    return original.xyz / original.w;
+}
+
 vec3 transform_and_dehomogenize(vec3 original) {
-    vec4 transformed = u_mv * vec4(original, 1);
-    return transformed.xyz / transformed.w;
+    return dehomogenize(mv_matrix * vec4(original, 1));
 }
 
 void main() {
@@ -35,9 +40,11 @@ void main() {
     lights[1] = light1;
     int num_lights = 2;
 
+    const vec3 eye_position = vec3(0, 0, 0 );
+
     vec3 pos_dehomognized = transform_and_dehomogenize(v_position);
-    vec3 eye_dir = normalize(vec3(0, 0, 0) - pos_dehomognized);
-    vec3 normal = normalize(u_normal_matrix * v_normal);
+    vec3 eye_dir = normalize(eye_position - pos_dehomognized);
+    vec3 normal = normalize(normal_matrix * v_normal);
 
     vec4 color;
 

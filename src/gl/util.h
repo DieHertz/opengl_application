@@ -18,10 +18,10 @@ container load_file(const char* name) {
     return container(std::istreambuf_iterator<char>{file}, std::istreambuf_iterator<char>{});
 }
 
-GLuint load_shader(const char* file_name, GLuint type);
+GLuint load_shader(const char* file_name, GLenum type);
 
 template<size_t N>
-GLuint load_shader_program(const std::pair<const char*, GLuint> (&shaders)[N]) {
+GLuint load_shader_program(const std::pair<const char*, GLenum> (&shaders)[N]) {
     const auto program_id = glCreateProgram();
     if (!program_id) throw std::runtime_error{"glCreateProgram() failed"};
 

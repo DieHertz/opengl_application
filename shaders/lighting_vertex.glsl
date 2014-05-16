@@ -1,4 +1,4 @@
-#version 410
+#version 410 core
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
@@ -8,11 +8,14 @@ out vec3 v_position;
 out vec3 v_normal;
 out vec2 v_tex_coord;
 
-uniform mat4 u_mv;
-uniform mat4 u_mvp;
+layout(std140) uniform transformations {
+    mat4 mv_matrix;
+    mat4 mvp_matrix;
+    mat3 normal_matrix;
+};
 
 void main() {
-    gl_Position = u_mvp * vec4(position, 1);
+    gl_Position = mvp_matrix * vec4(position, 1);
 
     v_position = position;
     v_normal = normal;

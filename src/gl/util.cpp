@@ -4,7 +4,7 @@
 
 namespace gl {
 
-GLuint load_shader(const char* file_name, const GLuint type) {
+GLuint load_shader(const char* file_name, const GLenum type) {
     const auto shader_src = load_file<std::string>(file_name);
     if (shader_src.empty()) throw std::runtime_error{std::string{file_name} + " - shader is empty"};
 
