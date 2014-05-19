@@ -105,9 +105,6 @@ void main() {
         for (int sample_idx = 0; sample_idx < shadow_samples_per_fragment; ++sample_idx) {
             int index = int(16.0 * random(floor(v_position.xyz * 1000.0), sample_idx)) % 16;
 
-            // float sampled_shadow = texture(
-                // u_shadow_maps[i], vec3(shadow_coord.xy / shadow_coord.w + poisson_disk[index] / 200.0,
-                // (shadow_coord.z - bias) / shadow_coord.w));
             float sampled_shadow = shadow_pcf(i,
                 vec3(shadow_coord.xy / shadow_coord.w + poisson_disk[index] / 200.0,
                 (shadow_coord.z - bias) / shadow_coord.w));
