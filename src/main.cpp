@@ -11,6 +11,7 @@
 #include <iostream>
 
 const auto MAX_LIGHTS = 8;
+const auto FIRST_SHADOW_MAP_TIU = GL_TEXTURE3;
 
 struct material {
     glm::vec4 diffuse;
@@ -23,7 +24,7 @@ struct scene_object {
     material mtl;
     GLuint mtl_buffer_id;
     GLuint diffuse_tex_id;
-    GLuint program_id;
+    GLuint normal_tex_id;
 };
 
 struct light {
@@ -133,7 +134,7 @@ class handler {
         scope_exit({ glActiveTexture(GL_TEXTURE0); });
 
         for (size_t i = 0; i < lights.size(); ++i) {
-            glActiveTexture(GL_TEXTURE2 + i);
+            glActiveTexture(FIRST_SHADOW_MAP_TIU + i);
             glBindTexture(GL_TEXTURE_2D, shadow_map_tex_ids[i]);
 
             glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, framebuffer_size.x, framebuffer_size.y,
@@ -149,7 +150,7 @@ class handler {
         const auto aspect_ratio = framebuffer_size.x / framebuffer_size.y;
         std::transform(std::begin(lights), std::end(lights), std::back_inserter(shadow_map_mvp_matrices),
             [=] (const light& l) {
-                return glm::perspective(glm::radians(90.0f), aspect_ratio, 0.1f, 100.0f) *
+                return glm::perspective(glm::radians(120.0f), aspect_ratio, 0.1f, 100.0f) *
                     glm::lookAt(glm::vec3(l.pos), center, up);
             }
         );
@@ -222,7 +223,7 @@ class handler {
             const auto uname = "u_shadow_maps[" + std::to_string(i) + ']';
             const auto uloc = glGetUniformLocation(program_id, uname.data());
 
-            glUniform1i(uloc, i + 2);
+            glUniform1i(uloc, FIRST_SHADOW_MAP_TIU - GL_TEXTURE0 + i);
         }
 
         return program_id;
@@ -230,9 +231,8 @@ class handler {
 
     scene_object create_ball() {
         const auto mesh = mesh::gen_sphere(0.5f, 32, 32);
-        const auto diffuse_tex_id = gl::load_png_texture("textures/ball12_diffuse.png");
 
-        const auto program_id = GLuint{};
+        const auto diffuse_tex_id = gl::load_png_texture("textures/ball12_diffuse.png");
 
         const auto mtl = material{ { 0, 0, 0, 1 }, { 1, 1, 1, 1 }, 100 };
 
@@ -241,24 +241,34 @@ class handler {
         glBindBuffer(GL_UNIFORM_BUFFER, mtl_buffer_id);
         glBufferData(GL_UNIFORM_BUFFER, sizeof(mtl), &mtl, GL_DYNAMIC_DRAW);
 
-        return { mesh, mtl, mtl_buffer_id, diffuse_tex_id, program_id };
+        return { mesh, mtl, mtl_buffer_id, diffuse_tex_id };
     }
 
     scene_object create_plane() {
         const auto mesh = mesh::gen_quad(
-            glm::vec3(-10, -0.5, -10), glm::vec3(-10, -0.5, 10),
-            glm::vec3(10, -0.5, 10), glm::vec3(10, -0.5, -10));
+            glm::vec3(-5, -0.5, 5), glm::vec3(5, -0.5, 5),
+            glm::vec3(5, -0.5, -5), glm::vec3(-5, -0.5, -5));
 
-        const auto program_id = GLuint{};
+        const auto diffuse_tex_id = gl::load_png_texture("textures/table_cloth_diffuse.png");
+        glGenerateMipmap(GL_TEXTURE_2D);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-        const auto mtl = material{ { 0.039f, 0.424f, 0.012f, 1 }, { 0, 0, 0, 1 }, 0 };
+        const auto normal_tex_id = gl::load_png_texture("textures/table_cloth_normal.png");
+        glGenerateMipmap(GL_TEXTURE_2D);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+        const auto mtl = material{ { 0, 0, 0, 1 }, { 0, 0, 0, 1 }, 0 };
 
         auto mtl_buffer_id = GLuint{};
         glGenBuffers(1, &mtl_buffer_id);
         glBindBuffer(GL_UNIFORM_BUFFER, mtl_buffer_id);
         glBufferData(GL_UNIFORM_BUFFER, sizeof(mtl), &mtl, GL_DYNAMIC_DRAW);
 
-        return { mesh, mtl, mtl_buffer_id, 0, program_id };
+        return { mesh, mtl, mtl_buffer_id, diffuse_tex_id, normal_tex_id };
     }
 
     void update_shadow_bias_matrices() {
@@ -336,18 +346,26 @@ class handler {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(lighting_program_id);
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_shadow_map"), 1);
+        scope_exit({
+            glUseProgram(0);
+            glActiveTexture(GL_TEXTURE0);
+        });
 
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
+
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), false);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, ball.diffuse_tex_id);
-
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), true);
         glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, ball.mtl_buffer_id);
         glBindVertexArray(ball.mesh.vao_id);
         glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
 
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), false);
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), true);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, plane.diffuse_tex_id);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, plane.normal_tex_id);
         glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, plane.mtl_buffer_id);
         glBindVertexArray(plane.mesh.vao_id);
         glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
@@ -367,8 +385,8 @@ public:
         plane = create_plane();
 
         lights = {
-            { { -1, 1.5f, 3, 1 }, { 0.5f, 0.5f, 0.5f, 1 } },
-            { { 3, 3, -2, 1 }, { 0.5f, 0.5f, 0.5f, 1 } },
+            { { -1, 1.5f, 3, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
+            { { 3, 3, -2, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
         };
 
         create_depth_fbo();
