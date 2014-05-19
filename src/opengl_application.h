@@ -59,11 +59,10 @@ public:
         glewExperimental = GL_TRUE;
         if (glewInit() != GLEW_OK) throw std::runtime_error{"glewInit() failed"};
 #endif
-
-        handler.onContextCreated();
-
         int fb_width, fb_height;
         glfwGetFramebufferSize(p_window, &fb_width, &fb_height);
+
+        handler.onContextCreated(fb_width, fb_height);
         handler.onFramebufferResize(fb_width, fb_height);
     }
 
