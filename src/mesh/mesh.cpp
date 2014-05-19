@@ -37,12 +37,12 @@ mesh_data gen_sphere(const float radius, const int rings, const int sectors) {
 
     for (auto r = 0; r < rings; ++r) {
         for (auto s = 0; s < sectors; ++s) {
-            indices.push_back(r * sectors + s);
+            indices.push_back((r + 1) * sectors + (s + 1));
             indices.push_back(r * sectors + (s + 1));
+            indices.push_back(r * sectors + s);
+            indices.push_back((r + 1) * sectors + s);
             indices.push_back((r + 1) * sectors + (s + 1));
             indices.push_back(r * sectors + s);
-            indices.push_back((r + 1) * sectors + (s + 1));
-            indices.push_back((r + 1) * sectors + s);
         }
     }
 
