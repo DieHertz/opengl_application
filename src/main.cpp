@@ -47,7 +47,7 @@ class handler {
     std::vector<glm::mat4> shadow_map_mvp_matrices;
     std::vector<GLuint> shadow_map_tex_ids;
 
-    glm::vec3 eye{-1, 1.5f, 3};
+    glm::vec3 eye{-3, 1.5f, 1};
     glm::vec3 center{0, 0, 0};
     glm::vec3 up{0, 1, 0};
 
@@ -143,8 +143,6 @@ class handler {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
         }
 
         const auto aspect_ratio = framebuffer_size.x / framebuffer_size.y;
@@ -385,8 +383,8 @@ public:
         plane = create_plane();
 
         lights = {
-            { { -1, 1.5f, 3, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
-            { { 3, 3, -2, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
+            { { -2, 3, 6, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
+            { { 4, 4, -2.5f, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
         };
 
         create_depth_fbo();

@@ -82,7 +82,7 @@ mesh_data gen_quad(const glm::vec3 v1, const glm::vec3 v2, const glm::vec3 v3, c
         glm::normalize(glm::cross(v3 - v4, v3 - v2)),
         glm::normalize(glm::cross(v4 - v1, v4 - v3))
     };
-    const glm::vec2 tex_coords[] { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
+    const glm::vec2 tex_coords[] { { 0, 0 }, { 4, 0 }, { 4, 4 }, { 0, 4 } };
     const GLushort indices[] { 0, 1, 2, 0, 2, 3 };
 
     auto mesh = mesh_data{GL_TRIANGLES, array_length(indices), GL_UNSIGNED_SHORT};

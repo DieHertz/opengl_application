@@ -36,7 +36,7 @@ uniform sampler2D u_diffuse_map;
 uniform sampler2D u_normal_map;
 uniform bool u_textured;
 
-uniform sampler2DShadow u_shadow_maps[MAX_LIGHTS];
+uniform sampler2D u_shadow_maps[MAX_LIGHTS];
 uniform mat4 u_shadow_bias_matrices[MAX_LIGHTS];
 
 const vec2 poisson_disk[16] = vec2[](
@@ -58,32 +58,24 @@ const vec2 poisson_disk[16] = vec2[](
     vec2( 0.14383161, -0.14100790 )
 );
 
-const int shadow_samples_per_fragment = 2;
+const int shadow_samples_per_fragment = 8;
 const float visibility_per_sample = 0.8 / shadow_samples_per_fragment;
 const float bias = 0;
 
-vec3 dehomogenize(in vec4 original) {
-    return original.xyz / original.w;
-}
-
 vec3 transform_and_dehomogenize(in vec3 original) {
-    return dehomogenize(mv_matrix * vec4(original, 1));
+    vec4 transformed = mv_matrix * vec4(original, 1);
+    return transformed.xyz / transformed.w;
 }
 
-float random(in vec3 seed, in int i) {
-    float dot_product = dot(vec4(seed, i), vec4(12.9898, 78.233, 45.164, 94.673));
-    return fract(sin(dot_product) * 43758.5453);
-}
-
-float shadow_pcf(in int i, in vec3 uvd) {
-    if (i == 0) return texture(u_shadow_maps[0], uvd);
-    else if (i == 1) return texture(u_shadow_maps[1], uvd);
-    else if (i == 2) return texture(u_shadow_maps[2], uvd);
-    else if (i == 3) return texture(u_shadow_maps[3], uvd);
-    else if (i == 4) return texture(u_shadow_maps[4], uvd);
-    else if (i == 5) return texture(u_shadow_maps[5], uvd);
-    else if (i == 6) return texture(u_shadow_maps[6], uvd);
-    else if (i == 7) return texture(u_shadow_maps[7], uvd);
+bool shadow_pcf(in int i, in vec3 uvd) {
+    if (i == 0) return texture(u_shadow_maps[0], uvd.xy).r >= uvd.z;
+    else if (i == 1) return texture(u_shadow_maps[1], uvd.xy).r >= uvd.z;
+    else if (i == 2) return texture(u_shadow_maps[2], uvd.xy).r >= uvd.z;
+    else if (i == 3) return texture(u_shadow_maps[3], uvd.xy).r >= uvd.z;
+    else if (i == 4) return texture(u_shadow_maps[4], uvd.xy).r >= uvd.z;
+    else if (i == 5) return texture(u_shadow_maps[5], uvd.xy).r >= uvd.z;
+    else if (i == 6) return texture(u_shadow_maps[6], uvd.xy).r >= uvd.z;
+    else if (i == 7) return texture(u_shadow_maps[7], uvd.xy).r >= uvd.z;
 }
 
 void main() {
@@ -102,11 +94,11 @@ void main() {
         float visibility = 1.0;
 
         for (int sample_idx = 0; sample_idx < shadow_samples_per_fragment; ++sample_idx) {
-            int index = int(16.0 * random(floor(v_position.xyz * 1000.0), sample_idx)) % 16;
+            int index = sample_idx;
 
-            float sampled_shadow = shadow_pcf(i,
-                vec3(shadow_coord.xy / shadow_coord.w + poisson_disk[index] / 200.0,
-                (shadow_coord.z - bias) / shadow_coord.w));
+            float sampled_shadow = float(shadow_pcf(i,
+                vec3(shadow_coord.xy / shadow_coord.w + poisson_disk[index] / 500.0,
+                (shadow_coord.z - bias) / shadow_coord.w)));
 
             visibility -= visibility_per_sample * (1.0 - sampled_shadow);
         }
