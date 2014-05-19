@@ -150,7 +150,7 @@ class handler {
         const auto aspect_ratio = framebuffer_size.x / framebuffer_size.y;
         std::transform(std::begin(lights), std::end(lights), std::back_inserter(shadow_map_mvp_matrices),
             [=] (const light& l) {
-                return glm::perspective(glm::radians(120.0f), aspect_ratio, 0.1f, 100.0f) *
+                return glm::perspective(glm::radians(90.0f), aspect_ratio, 0.1f, 100.0f) *
                     glm::lookAt(glm::vec3(l.pos), center, up);
             }
         );

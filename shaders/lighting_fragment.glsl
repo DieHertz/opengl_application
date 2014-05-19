@@ -90,7 +90,7 @@ void main() {
     const vec3 eye_position = vec3(0, 0, 0);
 
     vec4 diffuse = mtl.diffuse + texture(u_diffuse_map, vec2(1.0, 1.0) - v_tex_coord);
-    vec4 ambient = 0.6 * diffuse;
+    vec4 ambient = 0.2 * diffuse;
     vec3 pos_dehomognized = transform_and_dehomogenize(v_position);
     vec3 eye_dir = normalize(eye_position - pos_dehomognized);
     vec3 normal = normalize(normal_matrix * v_normal);
