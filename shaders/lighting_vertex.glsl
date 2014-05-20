@@ -12,6 +12,7 @@ layout(std140) uniform transformations {
     mat4 depth_bias_matrix;
     mat4 mv_matrix;
     mat4 mvp_matrix;
+    mat4 projection_matrix;
     mat3 normal_matrix;
 };
 

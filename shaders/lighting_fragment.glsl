@@ -12,6 +12,7 @@ layout(std140) uniform transformations {
     mat4 depth_bias_matrix;
     mat4 mv_matrix;
     mat4 mvp_matrix;
+    mat4 projection_matrix;
     mat3 normal_matrix;
 };
 
@@ -81,8 +82,8 @@ bool shadow_pcf(in int i, in vec3 uvd) {
 void main() {
     const vec3 eye_position = vec3(0, 0, 0);
 
-    vec4 diffuse = mtl.diffuse + texture(u_diffuse_map, vec2(1.0, 1.0) - v_tex_coord);
-    vec4 ambient = 0.2 * diffuse;
+    vec4 diffuse = mtl.diffuse + (u_textured ? texture(u_diffuse_map, vec2(1.0, 1.0) - v_tex_coord) : vec4(0));
+    vec4 ambient = 0.4 * diffuse;
     vec3 pos_dehomognized = transform_and_dehomogenize(v_position);
     vec3 eye_dir = normalize(eye_position - pos_dehomognized);
     vec3 normal = normalize(normal_matrix * v_normal);
@@ -91,16 +92,20 @@ void main() {
 
     for (int i = 0; i < num_lights; ++i) {
         vec4 shadow_coord = u_shadow_bias_matrices[i] * vec4(v_position, 1.0);
+        vec3 shadow_coord_clipspace = shadow_coord.xyz / shadow_coord.w;
         float visibility = 1.0;
 
-        for (int sample_idx = 0; sample_idx < shadow_samples_per_fragment; ++sample_idx) {
-            int index = sample_idx;
+        if (0 <= shadow_coord_clipspace.x && shadow_coord_clipspace.x <= 1 &&
+            0 <= shadow_coord_clipspace.y && shadow_coord_clipspace.y <= 1) {
+            for (int sample_idx = 0; sample_idx < shadow_samples_per_fragment; ++sample_idx) {
+                int index = sample_idx;
 
-            float sampled_shadow = float(shadow_pcf(i,
-                vec3(shadow_coord.xy / shadow_coord.w + poisson_disk[index] / 500.0,
-                (shadow_coord.z - bias) / shadow_coord.w)));
+                float sampled_shadow = float(shadow_pcf(i,
+                    vec3(shadow_coord_clipspace.xy + poisson_disk[index] / 200.0,
+                    (shadow_coord.z - bias) / shadow_coord.w)));
 
-            visibility -= visibility_per_sample * (1.0 - sampled_shadow);
+                visibility -= visibility_per_sample * (1.0 - sampled_shadow);
+            }
         }
 
         vec3 light_dir = normalize(transform_and_dehomogenize(lights[i].pos.xyz) - pos_dehomognized);

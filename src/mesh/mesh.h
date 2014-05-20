@@ -16,6 +16,7 @@ struct mesh_data {
 
 mesh_data gen_sphere(float radius, int rings, int sectors);
 mesh_data gen_quad(glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, glm::vec3 v4);
+mesh_data load_mdl(const char* name);
 
 } /* namespace mesh */
 

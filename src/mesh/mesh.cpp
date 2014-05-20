@@ -1,11 +1,12 @@
 #include "mesh.h"
+#include "mdl.h"
 #include "ext.h"
-#include <glm/vec2.hpp>
-#include <glm/vec4.hpp>
 #include <glm/gtc/constants.hpp>
 #include <glm/detail/func_geometric.hpp>
 #include <cmath>
 #include <vector>
+#include <fstream>
+#include <stdexcept>
 
 namespace mesh {
 
@@ -109,6 +110,44 @@ mesh_data gen_quad(const glm::vec3 v1, const glm::vec3 v2, const glm::vec3 v3, c
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.vbo_ids[3]);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+    return mesh;
+}
+
+mesh_data load_mdl(const char* name) {
+    std::ifstream in{name, std::ios::binary};
+    if (!in) throw std::runtime_error{std::string{"could not open "} + name};
+
+    auto hdr = mdl::header{};
+    in.read(reinterpret_cast<char*>(&hdr), sizeof(hdr));
+
+    auto vertices = std::vector<glm::vec3>(hdr.num_vertices);
+    auto normals = std::vector<glm::vec3>(hdr.num_vertices);
+    auto indices = std::vector<uint32_t>(hdr.num_indices);
+
+    in.read(reinterpret_cast<char*>(&vertices[0]), hdr.num_vertices * sizeof(vertices.front()));
+    in.read(reinterpret_cast<char*>(&normals[0]), hdr.num_vertices * sizeof(normals.front()));
+    in.read(reinterpret_cast<char*>(&indices[0]), hdr.num_indices * sizeof(indices.front()));
+
+    auto mesh = mesh_data{GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT};
+
+    glGenVertexArrays(1, &mesh.vao_id);
+    glBindVertexArray(mesh.vao_id);
+
+    glGenBuffers(array_length(mesh.vbo_ids), mesh.vbo_ids);
+
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo_ids[0]);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vertices.front()), vertices.data(), GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(vertices.front()), 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo_ids[1]);
+    glBufferData(GL_ARRAY_BUFFER, normals.size() * sizeof(normals.front()), normals.data(), GL_STATIC_DRAW);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(normals.front()), 0);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.vbo_ids[3]);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(indices.front()), indices.data(), GL_STATIC_DRAW);
 
     return mesh;
 }

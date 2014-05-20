@@ -72,7 +72,11 @@ public:
     }
 
     void run() NOEXCEPT {
+        auto last_timestamp = glfwGetTime();
         while (!glfwWindowShouldClose(p_window)) {
+            const auto elapsed = glfwGetTime() - last_timestamp;
+            last_timestamp += elapsed;
+            handler.onUpdate(last_timestamp, elapsed);
             handler.onRender();
 
             glfwSwapBuffers(p_window);

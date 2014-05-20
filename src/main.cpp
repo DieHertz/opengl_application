@@ -7,11 +7,14 @@
 #define GLM_FORCE_RADIANS
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <random>
 #include <algorithm>
 #include <iostream>
 
 const auto MAX_LIGHTS = 8;
 const auto FIRST_SHADOW_MAP_TIU = GL_TEXTURE3;
+const auto SHADOW_MAP_WIDTH = 512;
+const auto SHADOW_MAP_HEIGHT = 512;
 
 struct material {
     glm::vec4 diffuse;
@@ -36,6 +39,7 @@ struct transformations {
     glm::mat4 depth_bias_matrix;
     glm::mat4 mv_matrix;
     glm::mat4 mvp_matrix;
+    glm::mat4 projection_matrix;
     glm::mat4 normal_matrix;
 };
 
@@ -58,7 +62,7 @@ class handler {
         0.5f,   0.5f,   0.5f,   1
     };
 
-    glm::mat4 model, view, projection;
+    glm::mat4 model, view;
     transformations transf;
 
     GLuint transf_buffer_id;
@@ -71,9 +75,17 @@ class handler {
 
     GLuint depth_fbo_id;
     GLuint depth_tex_id;
+    GLuint normal_tex_id;
     GLuint depth_program_id;
 
     GLuint lighting_program_id;
+
+    GLuint occlusion_program_id;
+    GLuint occlusion_tex_id;
+    GLuint noise_tex_id;
+    std::vector<glm::vec3> occlusion_kernel;
+
+    bool shadow_maps_require_update = true;
 
     bool lmb_down = false;
     glm::vec2 prev_mouse_pos;
@@ -84,12 +96,12 @@ class handler {
         view = glm::lookAt(eye, center, up);
         transf.mv_matrix = view * model;
         transf.normal_matrix = glm::transpose(glm::inverse(transf.mv_matrix));
-        transf.mvp_matrix = projection * transf.mv_matrix;
+        transf.mvp_matrix = transf.projection_matrix * transf.mv_matrix;
     }
 
     void perspective(const float fovy, const float aspect, const float zNear, const float zFar) {
-        projection = glm::perspective(glm::radians(fovy), aspect, zNear, zFar);
-        transf.mvp_matrix = projection * transf.mv_matrix;
+        transf.projection_matrix = glm::perspective(glm::radians(fovy), aspect, zNear, zFar);
+        transf.mvp_matrix = transf.projection_matrix * transf.mv_matrix;
     }
 
     void camera_up(const float degrees) {
@@ -127,6 +139,15 @@ class handler {
         glBufferSubData(GL_UNIFORM_BUFFER, num_lights_offset, sizeof(num_lights), &num_lights);
     }
 
+    void update_lights_ubo() {
+        glBindBuffer(GL_UNIFORM_BUFFER, lights_buffer_id);
+
+        const auto num_lights_offset = MAX_LIGHTS * sizeof(lights.front());
+        const auto num_lights = GLint(lights.size());
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, lights.size() * sizeof(lights.front()), lights.data());
+        glBufferSubData(GL_UNIFORM_BUFFER, num_lights_offset, sizeof(num_lights), &num_lights);
+    }
+
     void create_shadow_maps() {
         shadow_map_tex_ids = std::vector<GLuint>(lights.size());
         glGenTextures(lights.size(), &shadow_map_tex_ids[0]);
@@ -137,7 +158,7 @@ class handler {
             glActiveTexture(FIRST_SHADOW_MAP_TIU + i);
             glBindTexture(GL_TEXTURE_2D, shadow_map_tex_ids[i]);
 
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, framebuffer_size.x, framebuffer_size.y,
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, SHADOW_MAP_WIDTH, SHADOW_MAP_HEIGHT,
                 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -145,10 +166,16 @@ class handler {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         }
 
+        calculate_shadow_mvps();
+    }
+
+    void calculate_shadow_mvps() {
+        shadow_map_mvp_matrices = {};
+
         const auto aspect_ratio = framebuffer_size.x / framebuffer_size.y;
         std::transform(std::begin(lights), std::end(lights), std::back_inserter(shadow_map_mvp_matrices),
             [=] (const light& l) {
-                return glm::perspective(glm::radians(90.0f), aspect_ratio, 0.1f, 100.0f) *
+                return glm::perspective(glm::radians(45.0f), aspect_ratio, 1.0f, 30.0f) *
                     glm::lookAt(glm::vec3(l.pos), center, up);
             }
         );
@@ -160,21 +187,29 @@ class handler {
 
         glGenTextures(1, &depth_tex_id);
         glBindTexture(GL_TEXTURE_2D, depth_tex_id);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, framebuffer_size.x, framebuffer_size.y,
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, SHADOW_MAP_WIDTH, SHADOW_MAP_HEIGHT,
             0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+
+        glGenTextures(1, &normal_tex_id);
+        glBindTexture(GL_TEXTURE_2D, normal_tex_id);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, framebuffer_size.x, framebuffer_size.y,
+            0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
         glGenFramebuffers(1, &depth_fbo_id);
         glBindFramebuffer(GL_FRAMEBUFFER, depth_fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
         glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depth_tex_id, 0);
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, normal_tex_id, 0);
 
-        glDrawBuffer(GL_NONE);
+        glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
             throw std::runtime_error{"create_depth_fbo() failed"};
@@ -227,12 +262,75 @@ class handler {
         return program_id;
     }
 
+    GLuint create_occlusion_shader() {
+        const std::pair<const char*, GLenum> shaders[] {
+            { "shaders/occlusion_vertex.glsl", GL_VERTEX_SHADER },
+            { "shaders/occlusion_fragment.glsl", GL_FRAGMENT_SHADER },
+        };
+
+        const auto program_id = gl::load_shader_program(shaders);
+        gl::link_shader_program(program_id);
+
+        const auto transf_block_index = glGetUniformBlockIndex(program_id, "transformations");
+        glUniformBlockBinding(program_id, transf_block_index, transf_binding_point);
+
+        glGenTextures(1, &occlusion_tex_id);
+        glBindTexture(GL_TEXTURE_2D, occlusion_tex_id);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, framebuffer_size.x, framebuffer_size.y, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+        std::mt19937 engine(time(nullptr));
+        std::uniform_real_distribution<float> distr{-1.0f, 1.0f};
+
+        const auto noise_tex_side = 4;
+
+        glUseProgram(program_id);
+        scope_exit({ glUseProgram(0); });
+
+        auto noise = std::vector<glm::vec3>(noise_tex_side * noise_tex_side);
+        for (auto& vec : noise) {
+            vec = glm::normalize(glm::vec3{ distr(engine), distr(engine), 0 });
+        }
+
+        glGenTextures(1, &noise_tex_id);
+        glBindTexture(GL_TEXTURE_2D, noise_tex_id);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, noise_tex_side, noise_tex_side, 0, GL_RGB, GL_FLOAT, noise.data());
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+        const auto kernel_size = 64;
+        occlusion_kernel = std::vector<glm::vec3>(kernel_size);
+
+        for (auto i = 0; i < kernel_size; ++i) {
+            occlusion_kernel[i] = glm::normalize(glm::vec3{
+                distr(engine),
+                distr(engine),
+                distr(engine) * 0.5f + 0.5f
+            });
+
+            const auto scale = static_cast<float>(i) / kernel_size;
+            const auto falloff = glm::mix(0.1f, 1.0f, scale * scale);
+
+            occlusion_kernel[i] *= falloff;
+
+            const auto uname = "u_sample_kernel[" + std::to_string(i) + ']';
+            const auto uloc = glGetUniformLocation(program_id, uname.data());
+
+            glUniform3fv(uloc, 1, glm::value_ptr(occlusion_kernel[i]));
+        }
+
+        return program_id;
+    }
+
     scene_object create_ball() {
         const auto mesh = mesh::gen_sphere(0.5f, 32, 32);
 
         const auto diffuse_tex_id = gl::load_png_texture("textures/ball12_diffuse.png");
 
-        const auto mtl = material{ { 0, 0, 0, 1 }, { 1, 1, 1, 1 }, 100 };
+        const auto mtl = material{ { 0, 0, 0, 1 }, { 1, 1, 1, 1 }, 200 };
 
         auto mtl_buffer_id = GLuint{};
         glGenBuffers(1, &mtl_buffer_id);
@@ -286,7 +384,7 @@ class handler {
         glBindFramebuffer(GL_FRAMEBUFFER, depth_fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
 
-        glViewport(0, 0, framebuffer_size.x, framebuffer_size.y);
+        glViewport(0, 0, SHADOW_MAP_WIDTH, SHADOW_MAP_HEIGHT);
 
         glUseProgram(depth_program_id);
         scope_exit({ glUseProgram(0); });
@@ -302,11 +400,11 @@ class handler {
 
             glUniformMatrix4fv(depth_mvp_loc, 1, GL_FALSE, glm::value_ptr(shadow_map_mvp_matrices[i]));
 
-            glBindVertexArray(ball.mesh.vao_id);
-            glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
-
             glBindVertexArray(plane.mesh.vao_id);
             glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
+
+            glBindVertexArray(ball.mesh.vao_id);
+            glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
         }
     }
 
@@ -314,13 +412,10 @@ class handler {
         glBindFramebuffer(GL_FRAMEBUFFER, depth_fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
 
-        glViewport(0, 0, framebuffer_size.x, framebuffer_size.y);
+        glViewport(0, 0, SHADOW_MAP_WIDTH, SHADOW_MAP_HEIGHT);
 
         glUseProgram(depth_program_id);
         scope_exit({ glUseProgram(0); });
-
-        glCullFace(GL_FRONT);
-        scope_exit({ glCullFace(GL_BACK); });
 
         const auto depth_mvp_loc = glGetUniformLocation(depth_program_id, "depth_mvp_matrix");
 
@@ -329,14 +424,41 @@ class handler {
 
         glUniformMatrix4fv(depth_mvp_loc, 1, GL_FALSE, glm::value_ptr(transf.mvp_matrix));
 
+        glBindVertexArray(plane.mesh.vao_id);
+        glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
+
         glBindVertexArray(ball.mesh.vao_id);
         glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
+
+        transf.depth_bias_matrix = depth_bias_matrix * transf.mvp_matrix;
+        update_transf_ubo();
+    }
+
+    void occlusion_pass() NOEXCEPT {
+        glViewport(0, 0, framebuffer_size.x, framebuffer_size.y);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        glUseProgram(occlusion_program_id);
+        scope_exit({
+            glUseProgram(0);
+            glActiveTexture(GL_TEXTURE0);
+        });
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, depth_tex_id);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, normal_tex_id);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, noise_tex_id);
+        glUniform1i(glGetUniformLocation(occlusion_program_id, "u_depth_map"), 0);
+        glUniform1i(glGetUniformLocation(occlusion_program_id, "u_normal_map"), 1);
+        glUniform1i(glGetUniformLocation(occlusion_program_id, "u_noise_map"), 2);
 
         glBindVertexArray(plane.mesh.vao_id);
         glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
 
-        transf.depth_bias_matrix = depth_bias_matrix * transf.mvp_matrix;
-        update_transf_ubo();
+        glBindVertexArray(ball.mesh.vao_id);
+        glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr); 
     }
 
     void lighting_pass() NOEXCEPT {
@@ -352,13 +474,6 @@ class handler {
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
 
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), false);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, ball.diffuse_tex_id);
-        glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, ball.mtl_buffer_id);
-        glBindVertexArray(ball.mesh.vao_id);
-        glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
-
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), true);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, plane.diffuse_tex_id);
@@ -367,6 +482,13 @@ class handler {
         glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, plane.mtl_buffer_id);
         glBindVertexArray(plane.mesh.vao_id);
         glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
+
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), true);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, ball.diffuse_tex_id);
+        glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, ball.mtl_buffer_id);
+        glBindVertexArray(ball.mesh.vao_id);
+        glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
     }
 
 public:
@@ -383,13 +505,14 @@ public:
         plane = create_plane();
 
         lights = {
-            { { -2, 3, 6, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
-            { { 4, 4, -2.5f, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
+            { { -1, 1.5f, 3, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
+            { { 3, 3, -2, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
         };
 
         create_depth_fbo();
         depth_program_id = create_depth_shader();
         lighting_program_id = create_lighting_shader();
+        occlusion_program_id = create_occlusion_shader();
 
         create_transf_ubo();
         create_lights_ubo();
@@ -436,14 +559,25 @@ public:
         update_transf_ubo();
     }
 
+    void onUpdate(const float now, const float elapsed) NOEXCEPT {
+        lights[0].pos.z = 3 * std::sin(5e-1 * now);
+        lights[0].pos.y = 2 + std::sin(5e-1 * now);
+        lights[0].pos.x = -1 * std::cos(5e-1 * now);
+
+        update_lights_ubo();
+        calculate_shadow_mvps();
+
+        shadow_maps_require_update = true;
+    }
+
     void onRender() NOEXCEPT {
-        static const auto shadow_map_prepassed = [=] {
+        if (shadow_maps_require_update) {
             shadow_map_prepass();
             update_shadow_bias_matrices();
-            return true;
-        }();
+        }
 
         depth_prepass();
+        // occlusion_pass();
         lighting_pass();
     }
 };
