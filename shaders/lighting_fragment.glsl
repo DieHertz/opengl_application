@@ -40,6 +40,10 @@ uniform bool u_textured;
 uniform sampler2D u_shadow_maps[MAX_LIGHTS];
 uniform mat4 u_shadow_bias_matrices[MAX_LIGHTS];
 
+uniform bool u_reflect;
+uniform float u_reflectance = 0.25;
+uniform samplerCube u_reflection_map;
+
 const vec2 poisson_disk[16] = vec2[](
     vec2( -0.94201624, -0.39906216 ),
     vec2( 0.94558609, -0.76890725 ),
@@ -83,6 +87,9 @@ void main() {
     const vec3 eye_position = vec3(0, 0, 0);
 
     vec4 diffuse = mtl.diffuse + (u_textured ? texture(u_diffuse_map, vec2(1.0, 1.0) - v_tex_coord) : vec4(0));
+    if (u_reflect) {
+        diffuse = (1 - u_reflectance) * diffuse + u_reflectance * texture(u_reflection_map, v_normal);
+    }
     vec4 ambient = 0.4 * diffuse;
     vec3 pos_dehomognized = transform_and_dehomogenize(v_position);
     vec3 eye_dir = normalize(eye_position - pos_dehomognized);

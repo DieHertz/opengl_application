@@ -12,9 +12,13 @@
 #include <iostream>
 
 const auto MAX_LIGHTS = 8;
-const auto FIRST_SHADOW_MAP_TIU = GL_TEXTURE3;
-const auto SHADOW_MAP_WIDTH = 512;
-const auto SHADOW_MAP_HEIGHT = 512;
+const auto FIRST_SHADOW_MAP_TIU = GL_TEXTURE10;
+const auto SHADOW_MAP_WIDTH = 256;
+const auto SHADOW_MAP_HEIGHT = 256;
+const auto OCCLUSION_MAP_WIDTH = 512;
+const auto OCCLUSION_MAP_HEIGHT = 512;
+const auto SPHERE_REFLECTION_MAP_WIDTH = 256;
+const auto SPHERE_REFLECTION_MAP_HEIGHT = 256;
 
 struct material {
     glm::vec4 diffuse;
@@ -78,6 +82,10 @@ class handler {
     GLuint normal_tex_id;
     GLuint depth_program_id;
 
+    GLuint reflection_fbo_id;
+    GLuint reflection_renderbuffer_id;
+    GLuint reflection_tex_id;
+
     GLuint lighting_program_id;
 
     GLuint occlusion_program_id;
@@ -91,6 +99,10 @@ class handler {
     glm::vec2 prev_mouse_pos;
 
     glm::vec2 framebuffer_size;
+
+    GLuint debug_program_id;
+    GLuint debug_surface_vao_id;
+    GLuint debug_surface_vbo_id;
 
     void look_at(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up) {
         view = glm::lookAt(eye, center, up);
@@ -172,7 +184,7 @@ class handler {
     void calculate_shadow_mvps() {
         shadow_map_mvp_matrices = {};
 
-        const auto aspect_ratio = framebuffer_size.x / framebuffer_size.y;
+        const auto aspect_ratio = static_cast<float>(SHADOW_MAP_WIDTH) / SHADOW_MAP_HEIGHT;
         std::transform(std::begin(lights), std::end(lights), std::back_inserter(shadow_map_mvp_matrices),
             [=] (const light& l) {
                 return glm::perspective(glm::radians(45.0f), aspect_ratio, 1.0f, 30.0f) *
@@ -182,9 +194,6 @@ class handler {
     }
 
     void create_depth_fbo() {
-        glActiveTexture(GL_TEXTURE1);
-        scope_exit({ glActiveTexture(GL_TEXTURE0); });
-
         glGenTextures(1, &depth_tex_id);
         glBindTexture(GL_TEXTURE_2D, depth_tex_id);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT16, SHADOW_MAP_WIDTH, SHADOW_MAP_HEIGHT,
@@ -196,7 +205,7 @@ class handler {
 
         glGenTextures(1, &normal_tex_id);
         glBindTexture(GL_TEXTURE_2D, normal_tex_id);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, framebuffer_size.x, framebuffer_size.y,
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SHADOW_MAP_WIDTH, SHADOW_MAP_HEIGHT,
             0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -216,6 +225,37 @@ class handler {
         }
     }
 
+    void create_reflection_fbo() {
+        glGenRenderbuffers(1, &reflection_renderbuffer_id);
+        glBindRenderbuffer(GL_RENDERBUFFER, reflection_renderbuffer_id);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT,
+            SPHERE_REFLECTION_MAP_WIDTH, SPHERE_REFLECTION_MAP_HEIGHT);
+
+        glGenTextures(1, &reflection_tex_id);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, reflection_tex_id);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+        for (auto face = 0; face < 6; ++face) {
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_RGB, SPHERE_REFLECTION_MAP_WIDTH, SPHERE_REFLECTION_MAP_HEIGHT,
+                0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+        }
+
+        glGenFramebuffers(1, &reflection_fbo_id);
+        glBindFramebuffer(GL_FRAMEBUFFER, reflection_fbo_id);
+        scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, reflection_renderbuffer_id);
+
+        glDrawBuffer(GL_COLOR_ATTACHMENT0);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            std::cout << std::hex << glGetError() << ' ' << glCheckFramebufferStatus(GL_FRAMEBUFFER) << std::endl;
+            throw std::runtime_error{"create_reflection_fbo() failed"};
+        }
+    }
+
     GLuint create_depth_shader() {
         const std::pair<const char*, GLenum> shaders[] {
             { "shaders/depth_vertex.glsl", GL_VERTEX_SHADER },
@@ -226,7 +266,9 @@ class handler {
         gl::link_shader_program(program_id);
 
         const auto transf_block_index = glGetUniformBlockIndex(program_id, "transformations");
-        glUniformBlockBinding(program_id, transf_block_index, transf_binding_point);
+        if (transf_block_index != GL_INVALID_INDEX) {
+            glUniformBlockBinding(program_id, transf_block_index, transf_binding_point);
+        }
 
         return program_id;
     }
@@ -276,7 +318,8 @@ class handler {
 
         glGenTextures(1, &occlusion_tex_id);
         glBindTexture(GL_TEXTURE_2D, occlusion_tex_id);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, framebuffer_size.x, framebuffer_size.y, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, OCCLUSION_MAP_WIDTH, OCCLUSION_MAP_HEIGHT,
+            0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
@@ -324,6 +367,50 @@ class handler {
 
         return program_id;
     }
+
+    void create_debug_surface() {
+        const std::pair<const char*, GLenum> shaders[] {
+            { "shaders/debug_vertex.glsl", GL_VERTEX_SHADER },
+            { "shaders/debug_fragment.glsl", GL_FRAGMENT_SHADER },
+        };
+
+        const auto program_id = gl::load_shader_program(shaders);
+        gl::link_shader_program(program_id);
+
+        debug_program_id = program_id;
+
+        GLfloat vertices[] {
+            -1, 1,
+            -1, -1,
+            1, -1,
+            -1, 1,
+            1, -1,
+            1, 1
+        };
+
+        glGenVertexArrays(1, &debug_surface_vao_id);
+        glBindVertexArray(debug_surface_vao_id);
+
+        glGenBuffers(1, &debug_surface_vbo_id);
+        glBindBuffer(GL_ARRAY_BUFFER, debug_surface_vbo_id);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(vertices[0]), 0);
+    }
+
+    void debug_draw_tex(const GLuint tex_id, const glm::vec4 rect) {
+        glViewport(rect.x, rect.y, rect.z, rect.w);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, tex_id);
+
+        glUseProgram(debug_program_id);
+        glUniform1i(glGetUniformLocation(debug_program_id, "u_texture"), 0);
+
+        glBindVertexArray(debug_surface_vao_id);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+
 
     scene_object create_ball() {
         const auto mesh = mesh::gen_sphere(0.5f, 32, 32);
@@ -435,7 +522,7 @@ class handler {
     }
 
     void occlusion_pass() NOEXCEPT {
-        glViewport(0, 0, framebuffer_size.x, framebuffer_size.y);
+        glViewport(0, 0, OCCLUSION_MAP_WIDTH, OCCLUSION_MAP_HEIGHT);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(occlusion_program_id);
@@ -461,6 +548,57 @@ class handler {
         glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr); 
     }
 
+    void reflection_pass() NOEXCEPT {
+        glBindFramebuffer(GL_FRAMEBUFFER, reflection_fbo_id);
+        scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
+
+        glUseProgram(lighting_program_id);
+        scope_exit({ glUseProgram(0); });
+
+        const auto old_transf = transf;
+        scope_exit({
+            transf = old_transf;
+            update_transf_ubo();
+            glActiveTexture(GL_TEXTURE0);
+        });
+
+        perspective(90.0f, static_cast<float>(SPHERE_REFLECTION_MAP_WIDTH) / SPHERE_REFLECTION_MAP_HEIGHT,
+            0.1f, 50.0f);
+
+        const glm::vec3 directions[][2] {
+            { { 1, 0, 0 },  { 0, -1, 0 } },
+            { { -1, 0, 0 }, { 0, -1, 0 } },
+            { { 0, 1, 0 },  { 0, 0, -1 } },
+            { { 0, -1, 0 }, { 0, 0, -1 } },
+            { { 0, 0, 1 },  { 0, -1, 0 } },
+            { { 0, 0, -1 }, { 0, -1, 0 } },
+        };
+
+        for (auto face = 0; face < 6; ++face) {
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
+                reflection_tex_id, 0);
+
+            glViewport(0, 0, SPHERE_REFLECTION_MAP_WIDTH, SPHERE_REFLECTION_MAP_HEIGHT);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            look_at(center, directions[face][0] * 0.5f, directions[face][1]);
+            update_transf_ubo();
+
+            glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
+            glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
+
+            glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), true);
+            glUniform1i(glGetUniformLocation(lighting_program_id, "u_reflect"), false);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, plane.diffuse_tex_id);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, plane.normal_tex_id);
+            glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, plane.mtl_buffer_id);
+            glBindVertexArray(plane.mesh.vao_id);
+            glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
+        }
+    }
+
     void lighting_pass() NOEXCEPT {
         glViewport(0, 0, framebuffer_size.x, framebuffer_size.y);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -475,6 +613,7 @@ class handler {
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
 
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), true);
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_reflect"), false);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, plane.diffuse_tex_id);
         glActiveTexture(GL_TEXTURE1);
@@ -484,8 +623,12 @@ class handler {
         glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
 
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), true);
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_reflect"), true);
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_reflection_map"), 2);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, ball.diffuse_tex_id);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, reflection_tex_id);
         glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, ball.mtl_buffer_id);
         glBindVertexArray(ball.mesh.vao_id);
         glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
@@ -501,6 +644,8 @@ public:
 
         glClearColor(0.2f, 0.3f, 0.8f, 1);
 
+        create_debug_surface();
+
         ball = create_ball();
         plane = create_plane();
 
@@ -510,6 +655,8 @@ public:
         };
 
         create_depth_fbo();
+        create_reflection_fbo();
+
         depth_program_id = create_depth_shader();
         lighting_program_id = create_lighting_shader();
         occlusion_program_id = create_occlusion_shader();
@@ -578,7 +725,10 @@ public:
 
         depth_prepass();
         // occlusion_pass();
+        reflection_pass();
         lighting_pass();
+
+        // debug_draw_tex(occlusion_tex_id, { 0, 0, framebuffer_size.x / 2, framebuffer_size.y / 2 });
     }
 };
 
