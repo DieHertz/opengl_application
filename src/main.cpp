@@ -251,7 +251,6 @@ class handler {
         glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-            std::cout << std::hex << glGetError() << ' ' << glCheckFramebufferStatus(GL_FRAMEBUFFER) << std::endl;
             throw std::runtime_error{"create_reflection_fbo() failed"};
         }
     }
