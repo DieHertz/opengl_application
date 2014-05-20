@@ -24,6 +24,7 @@ struct material {
     glm::vec4 diffuse;
     glm::vec4 specular;
     float shininess;
+    float reflectance;
 };
 
 struct scene_object {
@@ -416,7 +417,7 @@ class handler {
 
         const auto diffuse_tex_id = gl::load_png_texture("textures/ball12_diffuse.png");
 
-        const auto mtl = material{ { 0, 0, 0, 1 }, { 1, 1, 1, 1 }, 200 };
+        const auto mtl = material{ { 0, 0, 0, 1 }, { 1, 1, 1, 1 }, 200, 0.25f };
 
         auto mtl_buffer_id = GLuint{};
         glGenBuffers(1, &mtl_buffer_id);
@@ -443,7 +444,7 @@ class handler {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-        const auto mtl = material{ { 0, 0, 0, 1 }, { 0, 0, 0, 1 }, 0 };
+        const auto mtl = material{};
 
         auto mtl_buffer_id = GLuint{};
         glGenBuffers(1, &mtl_buffer_id);
@@ -580,14 +581,13 @@ class handler {
             glViewport(0, 0, SPHERE_REFLECTION_MAP_WIDTH, SPHERE_REFLECTION_MAP_HEIGHT);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            look_at(center, directions[face][0] * 0.5f, directions[face][1]);
+            look_at(center, directions[face][0], directions[face][1]);
             update_transf_ubo();
 
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
 
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), true);
-            glUniform1i(glGetUniformLocation(lighting_program_id, "u_reflect"), false);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, plane.diffuse_tex_id);
             glActiveTexture(GL_TEXTURE1);
@@ -612,7 +612,6 @@ class handler {
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
 
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), true);
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_reflect"), false);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, plane.diffuse_tex_id);
         glActiveTexture(GL_TEXTURE1);
@@ -622,7 +621,6 @@ class handler {
         glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
 
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), true);
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_reflect"), true);
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_reflection_map"), 2);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, ball.diffuse_tex_id);
