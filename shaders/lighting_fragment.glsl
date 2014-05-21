@@ -117,7 +117,9 @@ void main() {
         vec3 half_vec = normalize(light_dir + eye_dir);
 
         color += visibility * diffuse * lights[i].color * max(dot(normal, light_dir), 0);
-        color += visibility * mtl.specular * lights[i].color * pow(max(dot(normal, half_vec), 0), mtl.shininess);
+        if (mtl.shininess > 0) {
+            color += visibility * mtl.specular * lights[i].color * pow(max(dot(normal, half_vec), 0), mtl.shininess);
+        }
     }
 
     frag_color = color;

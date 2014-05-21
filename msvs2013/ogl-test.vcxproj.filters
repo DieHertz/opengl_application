@@ -24,6 +24,9 @@
     <ClCompile Include="..\src\gl\util.cpp">
       <Filter>src\gl</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\debug_surface.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\mesh\mesh.h">
@@ -49,6 +52,12 @@
     </ClInclude>
     <ClInclude Include="..\src\gl\util.h">
       <Filter>src\gl</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\debug_surface.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mdl.h">
+      <Filter>src</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

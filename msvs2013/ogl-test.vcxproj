@@ -84,14 +84,17 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\debug_surface.cpp" />
     <ClCompile Include="..\src\gl\util.cpp" />
     <ClCompile Include="..\src\main.cpp" />
     <ClCompile Include="..\src\mesh\mesh.cpp" />
     <ClCompile Include="..\src\picopng.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\src\debug_surface.h" />
     <ClInclude Include="..\src\gl\gl_include.h" />
     <ClInclude Include="..\src\gl\util.h" />
+    <ClInclude Include="..\src\mdl.h" />
     <ClInclude Include="..\src\mesh\geometry.h" />
     <ClInclude Include="..\src\mesh\mesh.h" />
     <ClInclude Include="..\src\noexcept.h" />

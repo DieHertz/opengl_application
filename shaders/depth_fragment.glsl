@@ -1,6 +1,6 @@
 #version 330 core
 
-in vec3 v_normal;
+in vec3 v_normal_eyespace;
 
 layout(location = 0) out vec3 normal;
 
@@ -13,5 +13,5 @@ layout(std140) uniform transformations {
 };
 
 void main() {
-    normal = normalize(/*normal_matrix * */v_normal);
+    normal = normalize(v_normal_eyespace);
 }
