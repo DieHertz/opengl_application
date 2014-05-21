@@ -6,6 +6,7 @@ INCLUDES    = -Isrc -Iglm
 
 SRC_FILES   = \
 	src/main.cpp src/picopng.cpp \
+	src/debug_surface.cpp \
 	src/gl/util.cpp src/mesh/mesh.cpp
 
 ${OUT_DIR}/${OUT_FILE}: ${SRC_FILES}

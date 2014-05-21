@@ -1,5 +1,6 @@
 #include "noexcept.h"
 #include "opengl_application.h"
+#include "debug_surface.h"
 #include "mesh/mesh.h"
 #include "gl/util.h"
 #include "ext.h"
@@ -101,9 +102,7 @@ class handler {
 
     glm::vec2 framebuffer_size;
 
-    GLuint debug_program_id;
-    GLuint debug_surface_vao_id;
-    GLuint debug_surface_vbo_id;
+    debug_surface debug;
 
     void look_at(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up) {
         view = glm::lookAt(eye, center, up);
@@ -368,50 +367,6 @@ class handler {
         return program_id;
     }
 
-    void create_debug_surface() {
-        const std::pair<const char*, GLenum> shaders[] {
-            { "shaders/debug_vertex.glsl", GL_VERTEX_SHADER },
-            { "shaders/debug_fragment.glsl", GL_FRAGMENT_SHADER },
-        };
-
-        const auto program_id = gl::load_shader_program(shaders);
-        gl::link_shader_program(program_id);
-
-        debug_program_id = program_id;
-
-        GLfloat vertices[] {
-            -1, 1,
-            -1, -1,
-            1, -1,
-            -1, 1,
-            1, -1,
-            1, 1
-        };
-
-        glGenVertexArrays(1, &debug_surface_vao_id);
-        glBindVertexArray(debug_surface_vao_id);
-
-        glGenBuffers(1, &debug_surface_vbo_id);
-        glBindBuffer(GL_ARRAY_BUFFER, debug_surface_vbo_id);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(vertices[0]), 0);
-    }
-
-    void debug_draw_tex(const GLuint tex_id, const glm::vec4 rect) {
-        glViewport(rect.x, rect.y, rect.z, rect.w);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, tex_id);
-
-        glUseProgram(debug_program_id);
-        glUniform1i(glGetUniformLocation(debug_program_id, "u_texture"), 0);
-
-        glBindVertexArray(debug_surface_vao_id);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-    }
-
-
     scene_object create_ball() {
         const auto mesh = mesh::gen_sphere(0.5f, 32, 32);
 
@@ -641,7 +596,7 @@ public:
 
         glClearColor(0.2f, 0.3f, 0.8f, 1);
 
-        create_debug_surface();
+        debug.init();
 
         ball = create_ball();
         plane = create_plane();
@@ -725,13 +680,13 @@ public:
         reflection_pass();
         lighting_pass();
 
-        // debug_draw_tex(occlusion_tex_id, { 0, 0, framebuffer_size.x / 2, framebuffer_size.y / 2 });
+        debug.draw(normal_tex_id, { 0, 0, framebuffer_size.x / 4, framebuffer_size.y / 4 });
     }
 };
 
 int main() {
     try {
-        auto app = opengl_application<handler>{4, 1, 640, 480};
+        opengl_application<handler> app{4, 1, 640, 480};
         app.run();
     } catch (std::exception& e) {
         std::cerr << "exception: " << e.what() << std::endl;
