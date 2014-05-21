@@ -3,7 +3,6 @@
 precision mediump float;
 
 in vec4 v_position_clipspace;
-in vec3 v_normal_worldspace;
 
 layout(location = 0) out vec3 frag_color;
 
@@ -15,60 +14,79 @@ layout(std140) uniform transformations {
     mat3 normal_matrix;
 };
 
-const int kernel_size = 64;
-
 uniform sampler2D u_depth_map;
 uniform sampler2D u_normal_map;
 uniform sampler2D u_noise_map;
 
-uniform vec2 u_noise_scale = vec2(640.0 / 4, 480.0 / 4);
+uniform float u_distance_treshold = 5.0f;
+uniform float u_width = 640.0;
+uniform float u_height = 480.0;
+uniform float u_near = 0.1;
+uniform float u_far = 100.0;
+uniform float u_fov = 60.0;
+uniform vec2 u_radius = vec2(10.0 / 640.0, 5.0 / 480.0);
 
-uniform vec3 u_sample_kernel[kernel_size];
-
-uniform float u_radius = 3.0f;
+const int sample_count = 16;
+const vec2 poisson_disk[16] = vec2[](
+    vec2( -0.94201624, -0.39906216 ),
+    vec2( 0.94558609, -0.76890725 ),
+    vec2( -0.094184101, -0.92938870 ),
+    vec2( 0.34495938, 0.29387760 ),
+    vec2( -0.91588581, 0.45771432 ),
+    vec2( -0.81544232, -0.87912464 ),
+    vec2( -0.38277543, 0.27676845 ),
+    vec2( 0.97484398, 0.75648379 ),
+    vec2( 0.44323325, -0.97511554 ),
+    vec2( 0.53742981, -0.47373420 ),
+    vec2( -0.26496911, -0.41893023 ),
+    vec2( 0.79197514, 0.19090188 ),
+    vec2( -0.24188840, 0.99706507 ),
+    vec2( -0.81409955, 0.91437590 ),
+    vec2( 0.19984126, 0.78641367 ),
+    vec2( 0.14383161, -0.14100790 )
+);
 
 float linearize_depth(in float non_linear_depth) {
-    return non_linear_depth;
-    const float n = 0.1;
-    const float f = 100.0;
-    return 2 * n / (f + n - non_linear_depth * (f - n));
+    return 2 * u_near / (u_far + u_near - non_linear_depth * (u_far - u_near));
+}
+
+vec3 reconstruct_eyespace_position(in vec2 position_clipspace, in float linear_depth) {
+    float thfov = tan(u_fov / 2.0);
+    float aspect = u_width / u_height;
+
+    vec3 view_ray = vec3(
+        (position_clipspace.x * 2.0 - 1.0) * thfov * aspect,
+        (position_clipspace.y * 2.0 - 1.0) * thfov,
+        1.0);
+
+    return view_ray * linear_depth;
 }
 
 void main() {
-    const vec4 ambient = vec4(0.9, 0.9, 0.9, 1);
-
     vec2 tex_coord = v_position_clipspace.xy / v_position_clipspace.w;
 
-    float thfov = tan(60 / 2.0);
-    float aspect = 640.0 / 480.0;
+    float depth = texture(u_depth_map, tex_coord).r;
+    vec3 view_pos = reconstruct_eyespace_position(tex_coord, linearize_depth(depth));
 
-    vec3 view_ray = vec3(
-        (tex_coord.x * 2.0 - 1.0) * thfov * aspect,
-        (tex_coord.y * 2.0 - 1.0) * thfov,
-        1.0
-    );
-    vec3 origin = view_ray * linearize_depth(texture(u_depth_map, tex_coord).x);
-    vec3 normal = normalize(texture(u_normal_map, tex_coord).xyz * 2.0 - 1.0);
-
-    vec3 rvec = texture(u_noise_map, tex_coord * u_noise_scale).xyz * 2.0 - 1.0;
-    vec3 tangent = normalize(rvec - normal * dot(rvec, normal));
-    vec3 bitangent = cross(normal, tangent);
-    mat3 tbn = mat3(tangent, bitangent, normal);
+    vec3 view_normal = normalize(texture(u_normal_map, tex_coord).rgb * 2.0 - 1.0);
 
     float occlusion = 0.0;
 
-    for (int i = 0; i < kernel_size; ++i) {
-        vec3 sample = tbn * u_sample_kernel[i] * u_radius + origin;
+    for (int i = 0; i < sample_count; ++i) {
+        vec2 sample_tex_coord = tex_coord + poisson_disk[i] * u_radius;
+        float sample_depth = texture(u_depth_map, sample_tex_coord).r;
 
-        vec4 offset = projection_matrix * vec4(sample, 1);
-        offset.xy /= offset.w;
-        offset.xy = offset.xy * 0.5 + 0.5;
+        vec3 sample_pos = reconstruct_eyespace_position(
+            sample_tex_coord, linearize_depth(sample_depth));
+        vec3 sample_dir = normalize(sample_pos - view_pos);
 
-        float sample_depth = linearize_depth(texture(u_depth_map, offset.xy).r);
+        float n_dot_s = max(dot(view_normal, sample_dir), 0);
+        float vp_dist_sp = distance(view_pos, sample_pos);
 
-        float range_check = float(abs(origin.z - sample_depth) < u_radius);
-        occlusion += float(sample_depth <= sample.z) * range_check;
+        float a = 1.0 - smoothstep(u_distance_treshold, u_distance_treshold * 2, vp_dist_sp);
+
+        occlusion += a * n_dot_s;
     }
 
-    frag_color = vec3(1 - occlusion / kernel_size);
+    frag_color = vec3(1 - occlusion / sample_count);
 }

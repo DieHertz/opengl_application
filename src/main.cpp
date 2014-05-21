@@ -8,7 +8,6 @@
 #define GLM_FORCE_RADIANS
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <random>
 #include <algorithm>
 #include <iostream>
 
@@ -16,8 +15,8 @@ const auto MAX_LIGHTS = 8;
 const auto FIRST_SHADOW_MAP_TIU = GL_TEXTURE10;
 const auto SHADOW_MAP_WIDTH = 256;
 const auto SHADOW_MAP_HEIGHT = 256;
-const auto OCCLUSION_MAP_WIDTH = 512;
-const auto OCCLUSION_MAP_HEIGHT = 512;
+const auto OCCLUSION_MAP_WIDTH = 640;
+const auto OCCLUSION_MAP_HEIGHT = 480;
 const auto SPHERE_REFLECTION_MAP_WIDTH = 256;
 const auto SPHERE_REFLECTION_MAP_HEIGHT = 256;
 
@@ -90,17 +89,18 @@ class handler {
 
     GLuint lighting_program_id;
 
-    GLuint occlusion_program_id;
+    GLuint occlusion_fbo_id;
+    GLuint occlusion_renderbuffer_id;
     GLuint occlusion_tex_id;
-    GLuint noise_tex_id;
-    std::vector<glm::vec3> occlusion_kernel;
+
+    GLuint occlusion_program_id;
 
     bool shadow_maps_require_update = true;
 
     bool lmb_down = false;
     glm::vec2 prev_mouse_pos;
 
-    glm::vec2 framebuffer_size;
+    glm::ivec2 framebuffer_size;
 
     debug_surface debug;
 
@@ -205,7 +205,7 @@ class handler {
 
         glGenTextures(1, &normal_tex_id);
         glBindTexture(GL_TEXTURE_2D, normal_tex_id);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SHADOW_MAP_WIDTH, SHADOW_MAP_HEIGHT,
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, SHADOW_MAP_WIDTH, SHADOW_MAP_HEIGHT,
             0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -239,7 +239,7 @@ class handler {
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
         for (auto face = 0; face < 6; ++face) {
-            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_RGB, SPHERE_REFLECTION_MAP_WIDTH, SPHERE_REFLECTION_MAP_HEIGHT,
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_RGB8, SPHERE_REFLECTION_MAP_WIDTH, SPHERE_REFLECTION_MAP_HEIGHT,
                 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
         }
 
@@ -247,6 +247,32 @@ class handler {
         glBindFramebuffer(GL_FRAMEBUFFER, reflection_fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, reflection_renderbuffer_id);
+
+        glDrawBuffer(GL_COLOR_ATTACHMENT0);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            throw std::runtime_error{"create_reflection_fbo() failed"};
+        }
+    }
+
+    void create_occlusion_fbo() {
+        glGenRenderbuffers(1, &occlusion_renderbuffer_id);
+        glBindRenderbuffer(GL_RENDERBUFFER, occlusion_renderbuffer_id);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT,
+            OCCLUSION_MAP_WIDTH, OCCLUSION_MAP_HEIGHT);
+
+        glGenTextures(1, &occlusion_tex_id);
+        glBindTexture(GL_TEXTURE_2D, occlusion_tex_id);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, OCCLUSION_MAP_WIDTH, OCCLUSION_MAP_HEIGHT,
+            0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+        glGenFramebuffers(1, &occlusion_fbo_id);
+        glBindFramebuffer(GL_FRAMEBUFFER, occlusion_fbo_id);
+        scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, reflection_renderbuffer_id);
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, occlusion_tex_id, 0);
 
         glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
@@ -314,55 +340,6 @@ class handler {
 
         const auto transf_block_index = glGetUniformBlockIndex(program_id, "transformations");
         glUniformBlockBinding(program_id, transf_block_index, transf_binding_point);
-
-        glGenTextures(1, &occlusion_tex_id);
-        glBindTexture(GL_TEXTURE_2D, occlusion_tex_id);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, OCCLUSION_MAP_WIDTH, OCCLUSION_MAP_HEIGHT,
-            0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-        std::mt19937 engine(time(nullptr));
-        std::uniform_real_distribution<float> distr{-1.0f, 1.0f};
-
-        const auto noise_tex_side = 4;
-
-        glUseProgram(program_id);
-        scope_exit({ glUseProgram(0); });
-
-        auto noise = std::vector<glm::vec3>(noise_tex_side * noise_tex_side);
-        for (auto& vec : noise) {
-            vec = glm::normalize(glm::vec3{ distr(engine), distr(engine), 0 });
-        }
-
-        glGenTextures(1, &noise_tex_id);
-        glBindTexture(GL_TEXTURE_2D, noise_tex_id);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, noise_tex_side, noise_tex_side, 0, GL_RGB, GL_FLOAT, noise.data());
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
-        const auto kernel_size = 64;
-        occlusion_kernel = std::vector<glm::vec3>(kernel_size);
-
-        for (auto i = 0; i < kernel_size; ++i) {
-            occlusion_kernel[i] = glm::normalize(glm::vec3{
-                distr(engine),
-                distr(engine),
-                distr(engine) * 0.5f + 0.5f
-            });
-
-            const auto scale = static_cast<float>(i) / kernel_size;
-            const auto falloff = glm::mix(0.1f, 1.0f, scale * scale);
-
-            occlusion_kernel[i] *= falloff;
-
-            const auto uname = "u_sample_kernel[" + std::to_string(i) + ']';
-            const auto uloc = glGetUniformLocation(program_id, uname.data());
-
-            glUniform3fv(uloc, 1, glm::value_ptr(occlusion_kernel[i]));
-        }
 
         return program_id;
     }
@@ -477,6 +454,12 @@ class handler {
     }
 
     void occlusion_pass() NOEXCEPT {
+        glBindFramebuffer(GL_FRAMEBUFFER, occlusion_fbo_id);
+        scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
+
+        glClearColor(1, 1, 1, 1);
+        scope_exit({ glClearColor(0.2f, 0.3f, 0.8f, 1); });
+
         glViewport(0, 0, OCCLUSION_MAP_WIDTH, OCCLUSION_MAP_HEIGHT);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -490,11 +473,8 @@ class handler {
         glBindTexture(GL_TEXTURE_2D, depth_tex_id);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, normal_tex_id);
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, noise_tex_id);
         glUniform1i(glGetUniformLocation(occlusion_program_id, "u_depth_map"), 0);
         glUniform1i(glGetUniformLocation(occlusion_program_id, "u_normal_map"), 1);
-        glUniform1i(glGetUniformLocation(occlusion_program_id, "u_noise_map"), 2);
 
         glBindVertexArray(plane.mesh.vao_id);
         glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
@@ -541,8 +521,8 @@ class handler {
 
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
-
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), true);
+            glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion"), false);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, plane.diffuse_tex_id);
             glActiveTexture(GL_TEXTURE1);
@@ -563,8 +543,13 @@ class handler {
             glActiveTexture(GL_TEXTURE0);
         });
 
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, occlusion_tex_id);
+
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion_map"), 3);
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion"), true);
 
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), true);
         glActiveTexture(GL_TEXTURE0);
@@ -602,11 +587,12 @@ public:
         plane = create_plane();
 
         lights = {
-            { { -1, 1.5f, 3, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
+            { { 3, 4.5f, 0, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
             { { 3, 3, -2, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
         };
 
         create_depth_fbo();
+        create_occlusion_fbo();
         create_reflection_fbo();
 
         depth_program_id = create_depth_shader();
@@ -633,11 +619,12 @@ public:
     }
 
     void onScroll(const float dx, const float dy) NOEXCEPT {
-        const auto eye = this->eye * (1 - 0.1f * dy);
-        const auto eye_dist = glm::length(eye);
-        if (!(1 < eye_dist && eye_dist < 5)) return;
+        const auto dir = eye - center;
+        const auto dir_length = glm::length(dir);
+        const auto scale = 1 - 0.1f * dy;
+        const auto length = glm::clamp(dir_length * scale, 1.0f, 5.0f);
 
-        this->eye = eye;
+        eye = center + length / dir_length * dir;
         look_at(eye, center, up);
         update_transf_ubo();
     }
@@ -654,14 +641,13 @@ public:
     void onFramebufferResize(const int width, const int height) NOEXCEPT {
         framebuffer_size = { width, height };
         look_at(eye, center, up);
-        perspective(60, static_cast<float>(width) / height, 0.1f, 100.0f);
+        perspective(60.0f, static_cast<float>(width) / height, 0.1f, 100.0f);
         update_transf_ubo();
     }
 
     void onUpdate(const float now, const float elapsed) NOEXCEPT {
-        lights[0].pos.z = 3 * std::sin(5e-1 * now);
-        lights[0].pos.y = 2 + std::sin(5e-1 * now);
-        lights[0].pos.x = -1 * std::cos(5e-1 * now);
+        lights[0].pos.x = 3 * std::cos(0.5f * now);
+        lights[0].pos.z = 1.5f * std::sin(0.5f * now);
 
         update_lights_ubo();
         calculate_shadow_mvps();
@@ -676,11 +662,12 @@ public:
         }
 
         depth_prepass();
-        // occlusion_pass();
+        occlusion_pass();
         reflection_pass();
         lighting_pass();
 
         debug.draw(normal_tex_id, { 0, 0, framebuffer_size.x / 4, framebuffer_size.y / 4 });
+        debug.draw(occlusion_tex_id, { 3 * framebuffer_size.x / 4, 0, framebuffer_size.x / 4, framebuffer_size.y / 4 });
     }
 };
 
