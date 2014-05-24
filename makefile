@@ -1,5 +1,5 @@
 CXX_FLAGS   = -std=c++11
-LD_FLAGS    = -lglfw3 -framework opengl
+LD_FLAGS    = -lglew -lglfw3 -framework opengl
 OUT_DIR     = bin
 OUT_FILE    = ogl_test
 INCLUDES    = -Isrc -Iglm

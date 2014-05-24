@@ -54,10 +54,9 @@ public:
 
         glfwMakeContextCurrent(p_window);
 
-#ifdef _WIN32 
         glewExperimental = GL_TRUE;
         if (glewInit() != GLEW_OK) throw std::runtime_error{"glewInit() failed"};
-#endif
+
         int fb_width, fb_height;
         glfwGetFramebufferSize(p_window, &fb_width, &fb_height);
 
