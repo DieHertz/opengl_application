@@ -18,7 +18,8 @@ public:
         glGenVertexArrays(1, &vao_id);
         glGenBuffers(1, &vbo_id);
 
-		color[0] = color[1] = color[2] = color[3] = 1;
+		color[0] = color[1] = color[2] = 0;
+        color[3] = 0.7f;
     }
 
     ~widget() {
@@ -51,12 +52,36 @@ public:
         update_required = true;
     }
 
+    bool on_mouse_down(const int button, const int mods, const float x, const float y) {
+        for (auto& child : children) {
+            if (child->process_mouse_down(button, mods, x, y)) return true;
+        }
+
+        return process_mouse_down(button, mods, x, y);
+    }
+
+    bool on_mouse_up(const int button, const int mods, const float x, const float y) {
+        for (auto& child : children) {
+            if (child->process_mouse_up(button, mods, x, y)) return true;
+        }
+
+        return process_mouse_up(button, mods, x, y);
+    }
+
+    bool on_mouse_move(const float x, const float y) {
+        for (auto& child : children) {
+            if (child->process_mouse_move(x, y)) return true;
+        }
+
+        return process_mouse_move(x, y);
+    }
+
 private:
     virtual void do_draw() {
         glUniform4fv(0, 1, color);
 
         glBindVertexArray(vao_id);
-        glDrawArrays(GL_TRIANGLES, 0, vertex_count);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
     }
 
     virtual void update_buffers() {
@@ -76,18 +101,30 @@ private:
 
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
-
-        vertex_count = array_length(vertices) / 2;
     }
 
+    virtual bool process_mouse_down(const int button, const int mods, const float x, const float y) {
+        return false;
+    }
+
+    virtual bool process_mouse_up(const int button, const int mods, const float x, const float y) {
+        return false;
+    }
+
+    virtual bool process_mouse_move(const float x, const float y) {
+        return false;
+    }
+
+protected:
     bool update_required = true;
     GLuint vao_id;
     GLuint vbo_id;
-    GLuint vertex_count;
 
     GLfloat color[4];
-    float x, y;
-    float w, h;
+    float x{}, y{};
+    float w{}, h{};
+
+private:
     widget* parent;
     std::list<std::unique_ptr<widget>> children;
 };

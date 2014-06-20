@@ -9,7 +9,7 @@ layout(location = 0) out vec3 frag_color;
 uniform sampler2D u_depth_map;
 uniform sampler2D u_normal_map;
 
-uniform float u_distance_treshold = 5.0f;
+uniform float u_distance_threshold = 5.0f;
 uniform float u_width = 640.0;
 uniform float u_height = 480.0;
 uniform float u_near = 1.0;
@@ -17,7 +17,7 @@ uniform float u_far = 30.0;
 uniform float u_fov = 45.0;
 uniform vec2 u_radius = vec2(5.0 / 640.0, 5.0 / 480.0);
 
-const int sample_count = 16;
+uniform int u_sample_count = 16;
 const vec2 poisson_disk[16] = vec2[](
     vec2( -0.94201624, -0.39906216 ),
     vec2( 0.94558609, -0.76890725 ),
@@ -61,7 +61,7 @@ void main() {
 
     float occlusion = 0.0;
 
-    for (int i = 0; i < sample_count; ++i) {
+    for (int i = 0; i < u_sample_count; ++i) {
         vec2 sample_tex_coord = v_tex_coord + poisson_disk[i] * u_radius;
         float sample_depth = texture(u_depth_map, sample_tex_coord).r;
 
@@ -72,10 +72,10 @@ void main() {
         float n_dot_s = max(dot(view_normal, sample_dir), 0);
         float vp_dist_sp = distance(view_pos, sample_pos);
 
-        float a = 1.0 - smoothstep(u_distance_treshold, u_distance_treshold * 2, vp_dist_sp);
+        float a = 1.0 - smoothstep(u_distance_threshold, u_distance_threshold * 2, vp_dist_sp);
 
         occlusion += a * n_dot_s;
     }
 
-    frag_color = vec3(1 - occlusion / sample_count);
+    frag_color = vec3(1 - occlusion / u_sample_count);
 }

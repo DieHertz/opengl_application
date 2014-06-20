@@ -1,4 +1,4 @@
-#include "ui/widget.h"
+#include "ui/slider.h"
 #include "opengl_application.h"
 #include "debug_surface.h"
 #include "mesh/mesh.h"
@@ -57,9 +57,12 @@ class handler {
     std::vector<glm::mat4> shadow_map_mvp_matrices;
     std::vector<GLuint> shadow_map_tex_ids;
 
+    float fovy = 60.0f;
     glm::vec3 eye{-3, 1.5f, 1};
     glm::vec3 center{0, 0, 0};
     glm::vec3 up{0, 1, 0};
+
+    float light_rotation_frequency = 0.5f;
 
     const glm::mat4 depth_bias_matrix{
         0.5f,   0,      0,      0,
@@ -100,7 +103,7 @@ class handler {
 
     bool shadow_maps_require_update = true;
 
-    bool lmb_down = false;
+    bool camera_dragging = false;
     glm::vec2 prev_mouse_pos;
 
     glm::ivec2 framebuffer_size;
@@ -115,6 +118,17 @@ class handler {
         GLuint program_id;
         glm::mat4 window_to_clip_matrix;
         std::unique_ptr<ui::widget> panel;
+        struct {
+            ui::slider<float>* radius_x_slider;
+            ui::slider<float>* radius_y_slider;
+            ui::slider<int>* sample_count_slider;
+        } occlusion;
+        struct {
+            ui::slider<float>* fovy_slider;
+        } camera;
+        struct {
+            ui::slider<float>* light_rotation_frequency_slider;
+        } lights;
     } ui;
 
     void look_at(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up) {
@@ -495,6 +509,15 @@ class handler {
         glUniform1i(glGetUniformLocation(occlusion_program_id, "u_depth_map"), 0);
         glUniform1i(glGetUniformLocation(occlusion_program_id, "u_normal_map"), 1);
 
+        GLfloat radius[] {
+            ui.occlusion.radius_x_slider->get_value() / SHADOW_MAP_WIDTH,
+            ui.occlusion.radius_y_slider->get_value() / SHADOW_MAP_HEIGHT
+        };
+
+        glUniform2fv(glGetUniformLocation(occlusion_program_id, "u_radius"), 1, radius);
+        glUniform1i(glGetUniformLocation(occlusion_program_id, "u_sample_count"),
+            ui.occlusion.sample_count_slider->get_value());
+
         glBindVertexArray(fullscreen_quad.vao_id);
         glDrawArrays(GL_TRIANGLES, 0, 6); 
     }
@@ -605,8 +628,15 @@ class handler {
     }
 
     void draw_ui() {
+        glViewport(0, 0, framebuffer_size.x, framebuffer_size.y);
+
         glDisable(GL_CULL_FACE);
-        scope_exit({ glEnable(GL_CULL_FACE); });
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        scope_exit({
+            glEnable(GL_CULL_FACE);
+            glDisable(GL_BLEND);
+        });
 
         glUseProgram(ui.program_id);
 
@@ -643,8 +673,39 @@ class handler {
             1, GL_FALSE, glm::value_ptr(ui.window_to_clip_matrix));
 
         ui.panel.reset(new ui::widget{});
-        ui.panel->set_pos(0, 0);
-        ui.panel->set_size(50, 50);
+
+        ui.occlusion.radius_x_slider = new ui::slider<float>{ui.panel.get()};
+        ui.occlusion.radius_x_slider->set_pos(5, 5);
+        ui.occlusion.radius_x_slider->set_size(150, 15);
+        ui.occlusion.radius_x_slider->set_min_max(0.1f, 50.0f, 5.0f);
+
+        ui.occlusion.radius_y_slider = new ui::slider<float>{ui.panel.get()};
+        ui.occlusion.radius_y_slider->set_pos(5, 25);
+        ui.occlusion.radius_y_slider->set_size(150, 15);
+        ui.occlusion.radius_y_slider->set_min_max(0.1f, 50.0f, 5.0f);
+
+        ui.occlusion.sample_count_slider = new ui::slider<int>{ui.panel.get()};
+        ui.occlusion.sample_count_slider->set_pos(5, 45);
+        ui.occlusion.sample_count_slider->set_size(150, 15);
+        ui.occlusion.sample_count_slider->set_min_max(1, 16, 8);
+
+        ui.camera.fovy_slider = new ui::slider<float>{ui.panel.get()};
+        ui.camera.fovy_slider->set_pos(5, 65);
+        ui.camera.fovy_slider->set_size(150, 15);
+        ui.camera.fovy_slider->set_min_max(30.0f, 120.0f, 60.0f);
+        ui.camera.fovy_slider->on_change([this] (const float fovy) {
+            this->fovy = fovy;
+            perspective(fovy, static_cast<float>(framebuffer_size.x) / framebuffer_size.y, 0.1f, 100.0f);
+            update_transf_ubo();
+        });
+
+        ui.lights.light_rotation_frequency_slider = new ui::slider<float>{ui.panel.get()};
+        ui.lights.light_rotation_frequency_slider->set_pos(5, 85);
+        ui.lights.light_rotation_frequency_slider->set_size(150, 15);
+        ui.lights.light_rotation_frequency_slider->set_min_max(0.1f, 10.0f, 0.5f);
+        ui.lights.light_rotation_frequency_slider->on_change([this] (const float freq) {
+            this->light_rotation_frequency = freq;
+        });
     }
 
 public:
@@ -691,8 +752,10 @@ public:
         create_ui();
     }
 
-    void onCursorMove(const double x, const double y) {
-        if (!lmb_down) return;
+    void onCursorMove(const float x, const float y) {
+        if (ui.panel->on_mouse_move(x, y)) return;
+
+        if (!camera_dragging) return;
 
         const auto factor = 1.0f;
         const auto diff = factor * (glm::vec2(x, y) - prev_mouse_pos);
@@ -718,9 +781,12 @@ public:
 
     void onMouseButton(const int button, const int action, const int mods,
         const float x, const float y) {
-        lmb_down = button == 0 && action == 1;
+        if (action == 1 && ui.panel->on_mouse_down(button, mods, x, y)) return;
+        else if (action == 0 && ui.panel->on_mouse_up(button, mods, x, y)) return;
 
-        if (!lmb_down) return;
+        camera_dragging = button == 0 && action == 1;
+
+        if (!camera_dragging) return;
 
         prev_mouse_pos = glm::vec2(x, y);
     }
@@ -728,13 +794,13 @@ public:
     void onFramebufferResize(const int width, const int height) {
         framebuffer_size = { width, height };
         look_at(eye, center, up);
-        perspective(60.0f, static_cast<float>(width) / height, 0.1f, 100.0f);
+        perspective(fovy, static_cast<float>(width) / height, 0.1f, 100.0f);
         update_transf_ubo();
     }
 
     void onUpdate(const float now, const float elapsed) {
-        lights[0].pos.x = 3 * std::cos(0.5f * now);
-        lights[0].pos.z = 1.5f * std::sin(0.5f * now);
+        lights[0].pos.x = 3 * std::cos(light_rotation_frequency * now);
+        lights[0].pos.z = 1.5f * std::sin(light_rotation_frequency * now);
 
         update_lights_ubo();
         calculate_shadow_mvps();
@@ -753,7 +819,7 @@ public:
         reflection_pass();
         lighting_pass();
 
-        // debug.draw(occlusion_tex_id, { 0, 0, framebuffer_size.x / 2, framebuffer_size.y / 2 });
+        debug.draw(occlusion_tex_id, { 0, 0, framebuffer_size.x / 2, framebuffer_size.y / 2 });
         // debug.draw(normal_tex_id, { 3 * framebuffer_size.x / 4, 0, framebuffer_size.x / 4, framebuffer_size.y / 4 });
 
         draw_ui();
