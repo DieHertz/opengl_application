@@ -60,7 +60,7 @@ private:
     }
 
     virtual void update_buffers() {
-        const GLfloat data[] {
+        const GLfloat vertices[] {
             x, y,
             x, y + h,
             x + w, y + h,
@@ -72,12 +72,12 @@ private:
         glBindVertexArray(vao_id);
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo_id);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(data), data, GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
 
-        vertex_count = array_length(data) / 2;
+        vertex_count = array_length(vertices) / 2;
     }
 
     bool update_required = true;
