@@ -91,7 +91,7 @@ void main() {
     if (mtl.reflectance > 0) {
         diffuse = (1 - mtl.reflectance) * diffuse + mtl.reflectance * texture(u_reflection_map, v_normal);
     }
-    vec4 ambient = 0.4 * diffuse;
+    vec4 ambient = vec4(0.1, 0.1, 0.1, 1.0);
     vec3 pos_dehomognized = transform_and_dehomogenize(v_position);
     vec3 eye_dir = normalize(eye_position - pos_dehomognized);
     vec3 normal = normalize(normal_matrix * v_normal);

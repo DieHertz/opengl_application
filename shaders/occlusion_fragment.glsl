@@ -2,29 +2,20 @@
 
 precision mediump float;
 
-in vec4 v_position_clipspace;
+in vec2 v_tex_coord;
 
 layout(location = 0) out vec3 frag_color;
 
-layout(std140) uniform transformations {
-    mat4 mvp_bias_matrix;
-    mat4 mv_matrix;
-    mat4 mvp_matrix;
-    mat4 projection_matrix;
-    mat3 normal_matrix;
-};
-
 uniform sampler2D u_depth_map;
 uniform sampler2D u_normal_map;
-uniform sampler2D u_noise_map;
 
 uniform float u_distance_treshold = 5.0f;
 uniform float u_width = 640.0;
 uniform float u_height = 480.0;
-uniform float u_near = 0.1;
-uniform float u_far = 100.0;
-uniform float u_fov = 60.0;
-uniform vec2 u_radius = vec2(10.0 / 640.0, 5.0 / 480.0);
+uniform float u_near = 1.0;
+uniform float u_far = 30.0;
+uniform float u_fov = 45.0;
+uniform vec2 u_radius = vec2(5.0 / 640.0, 5.0 / 480.0);
 
 const int sample_count = 16;
 const vec2 poisson_disk[16] = vec2[](
@@ -63,17 +54,15 @@ vec3 reconstruct_eyespace_position(in vec2 position_clipspace, in float linear_d
 }
 
 void main() {
-    vec2 tex_coord = v_position_clipspace.xy / v_position_clipspace.w;
+    float depth = texture(u_depth_map, v_tex_coord).r;
+    vec3 view_pos = reconstruct_eyespace_position(v_tex_coord, linearize_depth(depth));
 
-    float depth = texture(u_depth_map, tex_coord).r;
-    vec3 view_pos = reconstruct_eyespace_position(tex_coord, linearize_depth(depth));
-
-    vec3 view_normal = normalize(texture(u_normal_map, tex_coord).rgb * 2.0 - 1.0);
+    vec3 view_normal = normalize(texture(u_normal_map, v_tex_coord).rgb * 2.0 - 1.0);
 
     float occlusion = 0.0;
 
     for (int i = 0; i < sample_count; ++i) {
-        vec2 sample_tex_coord = tex_coord + poisson_disk[i] * u_radius;
+        vec2 sample_tex_coord = v_tex_coord + poisson_disk[i] * u_radius;
         float sample_depth = texture(u_depth_map, sample_tex_coord).r;
 
         vec3 sample_pos = reconstruct_eyespace_position(

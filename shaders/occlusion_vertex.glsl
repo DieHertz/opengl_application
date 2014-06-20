@@ -1,20 +1,11 @@
 #version 330 core
 
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec3 normal;
+layout(location = 0) in vec2 pos_clipspace;
 
-out vec4 v_position_clipspace;
-
-layout(std140) uniform transformations {
-    mat4 mvp_bias_matrix;
-    mat4 mv_matrix;
-    mat4 mvp_matrix;
-    mat4 projection_matrix;
-    mat3 normal_matrix;
-};
+out vec2 v_tex_coord;
 
 void main() {
-    v_position_clipspace = mvp_bias_matrix * vec4(position, 1);
-
-    gl_Position = mvp_matrix * vec4(position, 1);
+    vec4 pos = vec4(pos_clipspace, 0, 1);
+    gl_Position = pos;
+    v_tex_coord = pos.xy * 0.5 + 0.5;
 }

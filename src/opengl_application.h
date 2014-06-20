@@ -1,6 +1,5 @@
 #ifndef opengl_application_h
 #define opengl_application_h
-#include "noexcept.h"
 #include "gl/gl_include.h"
 #include <GLFW/glfw3.h>
 #include <cassert>
@@ -33,19 +32,19 @@ public:
         glfwSetCursorPosCallback(p_window, [] (GLFWwindow* w, double x, double y) {
             auto p_handler = static_cast<Handler*>(glfwGetWindowUserPointer(w));
             assert(p_handler);
-            p_handler->onCursorMove(x, y);
+            p_handler->onCursorMove(static_cast<float>(x), static_cast<float>(y));
         });
         glfwSetScrollCallback(p_window, [] (GLFWwindow* w, double dx, double dy) {
             auto p_handler = static_cast<Handler*>(glfwGetWindowUserPointer(w));
             assert(p_handler);
-            p_handler->onScroll(dx, dy);
+			p_handler->onScroll(static_cast<float>(dx), static_cast<float>(dy));
         });
         glfwSetMouseButtonCallback(p_window, [] (GLFWwindow* w, int button, int action, int mods) {
             auto p_handler = static_cast<Handler*>(glfwGetWindowUserPointer(w));
             assert(p_handler);
             double x, y;
             glfwGetCursorPos(w, &x, &y);
-            p_handler->onMouseButton(button, action, mods, x, y);
+			p_handler->onMouseButton(button, action, mods, static_cast<float>(x), static_cast<float>(y));
         });
         glfwSetFramebufferSizeCallback(p_window, [] (GLFWwindow* w, int width, int height) {
             auto p_handler = static_cast<Handler*>(glfwGetWindowUserPointer(w));
@@ -66,17 +65,17 @@ public:
         handler.onFramebufferResize(fb_width, fb_height);
     }
 
-    ~opengl_application() NOEXCEPT {
+    ~opengl_application() {
         glfwDestroyWindow(p_window);
         glfwTerminate();
     }
 
-    void run() NOEXCEPT {
+    void run() {
         auto last_timestamp = glfwGetTime();
         while (!glfwWindowShouldClose(p_window)) {
             const auto elapsed = glfwGetTime() - last_timestamp;
             last_timestamp += elapsed;
-            handler.onUpdate(last_timestamp, elapsed);
+			handler.onUpdate(static_cast<float>(last_timestamp), static_cast<float>(elapsed));
             handler.onRender();
 
             glfwSwapBuffers(p_window);

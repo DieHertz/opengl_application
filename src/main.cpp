@@ -1,4 +1,4 @@
-#include "noexcept.h"
+#include "ui/widget.h"
 #include "opengl_application.h"
 #include "debug_surface.h"
 #include "mesh/mesh.h"
@@ -13,8 +13,8 @@
 
 const auto MAX_LIGHTS = 8;
 const auto FIRST_SHADOW_MAP_TIU = GL_TEXTURE10;
-const auto SHADOW_MAP_WIDTH = 256;
-const auto SHADOW_MAP_HEIGHT = 256;
+const auto SHADOW_MAP_WIDTH = 640;
+const auto SHADOW_MAP_HEIGHT = 480;
 const auto OCCLUSION_MAP_WIDTH = 640;
 const auto OCCLUSION_MAP_HEIGHT = 480;
 const auto SPHERE_REFLECTION_MAP_WIDTH = 256;
@@ -51,6 +51,7 @@ struct transformations {
 class handler {
     scene_object ball;
     scene_object plane;
+    scene_object buddha;
 
     std::vector<light> lights;
     std::vector<glm::mat4> shadow_map_mvp_matrices;
@@ -83,9 +84,11 @@ class handler {
     GLuint normal_tex_id;
     GLuint depth_program_id;
 
-    GLuint reflection_fbo_id;
-    GLuint reflection_renderbuffer_id;
-    GLuint reflection_tex_id;
+    struct {
+        GLuint fbo_id;
+        GLuint renderbuffer_id;
+        GLuint tex_id;
+    } reflection;
 
     GLuint lighting_program_id;
 
@@ -103,6 +106,16 @@ class handler {
     glm::ivec2 framebuffer_size;
 
     debug_surface debug;
+
+    struct {
+        GLuint vao_id, vbo_id;
+    } fullscreen_quad;
+
+    struct {
+        GLuint program_id;
+        glm::mat4 window_to_clip_matrix;
+        std::unique_ptr<ui::widget> panel;
+    } ui;
 
     void look_at(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up) {
         view = glm::lookAt(eye, center, up);
@@ -226,13 +239,13 @@ class handler {
     }
 
     void create_reflection_fbo() {
-        glGenRenderbuffers(1, &reflection_renderbuffer_id);
-        glBindRenderbuffer(GL_RENDERBUFFER, reflection_renderbuffer_id);
+        glGenRenderbuffers(1, &reflection.renderbuffer_id);
+        glBindRenderbuffer(GL_RENDERBUFFER, reflection.renderbuffer_id);
         glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT,
             SPHERE_REFLECTION_MAP_WIDTH, SPHERE_REFLECTION_MAP_HEIGHT);
 
-        glGenTextures(1, &reflection_tex_id);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, reflection_tex_id);
+        glGenTextures(1, &reflection.tex_id);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, reflection.tex_id);
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -243,10 +256,10 @@ class handler {
                 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
         }
 
-        glGenFramebuffers(1, &reflection_fbo_id);
-        glBindFramebuffer(GL_FRAMEBUFFER, reflection_fbo_id);
+        glGenFramebuffers(1, &reflection.fbo_id);
+        glBindFramebuffer(GL_FRAMEBUFFER, reflection.fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, reflection_renderbuffer_id);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, reflection.renderbuffer_id);
 
         glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
@@ -271,7 +284,7 @@ class handler {
         glGenFramebuffers(1, &occlusion_fbo_id);
         glBindFramebuffer(GL_FRAMEBUFFER, occlusion_fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, reflection_renderbuffer_id);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, reflection.renderbuffer_id);
         glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, occlusion_tex_id, 0);
 
         glDrawBuffer(GL_COLOR_ATTACHMENT0);
@@ -399,7 +412,7 @@ class handler {
         }
     }
 
-    void shadow_map_prepass() NOEXCEPT {
+    void shadow_map_prepass() {
         glBindFramebuffer(GL_FRAMEBUFFER, depth_fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
 
@@ -424,10 +437,13 @@ class handler {
 
             glBindVertexArray(ball.mesh.vao_id);
             glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
+
+            glBindVertexArray(buddha.mesh.vao_id);
+            glDrawElements(buddha.mesh.primitive_mode, buddha.mesh.num_indices, buddha.mesh.index_type, nullptr);
         }
     }
 
-    void depth_prepass() NOEXCEPT {
+    void depth_prepass() {
         glBindFramebuffer(GL_FRAMEBUFFER, depth_fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
 
@@ -449,11 +465,14 @@ class handler {
         glBindVertexArray(ball.mesh.vao_id);
         glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
 
+        glBindVertexArray(buddha.mesh.vao_id);
+        glDrawElements(buddha.mesh.primitive_mode, buddha.mesh.num_indices, buddha.mesh.index_type, nullptr);
+
         transf.depth_bias_matrix = depth_bias_matrix * transf.mvp_matrix;
         update_transf_ubo();
     }
 
-    void occlusion_pass() NOEXCEPT {
+    void occlusion_pass() {
         glBindFramebuffer(GL_FRAMEBUFFER, occlusion_fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
 
@@ -476,15 +495,12 @@ class handler {
         glUniform1i(glGetUniformLocation(occlusion_program_id, "u_depth_map"), 0);
         glUniform1i(glGetUniformLocation(occlusion_program_id, "u_normal_map"), 1);
 
-        glBindVertexArray(plane.mesh.vao_id);
-        glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
-
-        glBindVertexArray(ball.mesh.vao_id);
-        glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr); 
+        glBindVertexArray(fullscreen_quad.vao_id);
+        glDrawArrays(GL_TRIANGLES, 0, 6); 
     }
 
-    void reflection_pass() NOEXCEPT {
-        glBindFramebuffer(GL_FRAMEBUFFER, reflection_fbo_id);
+    void reflection_pass() {
+        glBindFramebuffer(GL_FRAMEBUFFER, reflection.fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
 
         glUseProgram(lighting_program_id);
@@ -511,7 +527,7 @@ class handler {
 
         for (auto face = 0; face < 6; ++face) {
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
-                reflection_tex_id, 0);
+                reflection.tex_id, 0);
 
             glViewport(0, 0, SPHERE_REFLECTION_MAP_WIDTH, SPHERE_REFLECTION_MAP_HEIGHT);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -533,7 +549,7 @@ class handler {
         }
     }
 
-    void lighting_pass() NOEXCEPT {
+    void lighting_pass() {
         glViewport(0, 0, framebuffer_size.x, framebuffer_size.y);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -565,10 +581,66 @@ class handler {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, ball.diffuse_tex_id);
         glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, reflection_tex_id);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, reflection.tex_id);
         glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, ball.mtl_buffer_id);
         glBindVertexArray(ball.mesh.vao_id);
         glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
+
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), false);
+        glBindVertexArray(buddha.mesh.vao_id);
+        glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, buddha.mtl_buffer_id);
+        glDrawElements(buddha.mesh.primitive_mode, buddha.mesh.num_indices, buddha.mesh.index_type, nullptr);
+    }
+
+    GLuint create_ui_shader() {
+        const std::pair<const char*, GLenum> shaders[] {
+            { "shaders/ui_vertex.glsl", GL_VERTEX_SHADER },
+            { "shaders/ui_fragment.glsl", GL_FRAGMENT_SHADER },
+        };
+
+        const auto program_id = gl::load_shader_program(shaders);
+        gl::link_shader_program(program_id);
+
+        return program_id;
+    }
+
+    void draw_ui() {
+        glUseProgram(ui.program_id);
+
+        ui.panel->draw();
+    }
+
+    void create_fullscreen_quad() {
+        const GLfloat vertices[] {
+            -1, 1,
+            -1, -1,
+            1, -1,
+            -1, 1,
+            1, -1,
+            1, 1
+        };
+
+        glGenVertexArrays(1, &fullscreen_quad.vao_id);
+        glBindVertexArray(fullscreen_quad.vao_id);
+
+        glGenBuffers(1, &fullscreen_quad.vbo_id);
+        glBindBuffer(GL_ARRAY_BUFFER, fullscreen_quad.vbo_id);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(vertices[0]), 0);
+    }
+
+    void create_ui() {
+        ui.program_id = create_ui_shader();
+        ui.window_to_clip_matrix = glm::ortho(0, framebuffer_size.x, framebuffer_size.y, 0);
+        glUseProgram(ui.program_id);
+        scope_exit({ glUseProgram(0); });
+        glUniformMatrix4fv(glGetUniformLocation(ui.program_id, "window_to_clip_matrix"),
+            1, GL_FALSE, glm::value_ptr(ui.window_to_clip_matrix));
+
+        ui.panel.reset(new ui::widget{});
+        ui.panel->set_pos(10, 10);
+        ui.panel->set_size(1000, 1000);
     }
 
 public:
@@ -585,6 +657,13 @@ public:
 
         ball = create_ball();
         plane = create_plane();
+        buddha = {
+			mesh::load_mdl("models/buddha.mdl"),
+            material{ { 0.707f, 0.707f, 0.707f, 1 }, { 0, 0, 0, 1 }, 0, 0 }
+        };
+        glGenBuffers(1, &buddha.mtl_buffer_id);
+        glBindBuffer(GL_UNIFORM_BUFFER, buddha.mtl_buffer_id);
+        glBufferData(GL_UNIFORM_BUFFER, sizeof(buddha.mtl), &buddha.mtl, GL_DYNAMIC_DRAW);
 
         lights = {
             { { 3, 4.5f, 0, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
@@ -602,9 +681,13 @@ public:
         create_transf_ubo();
         create_lights_ubo();
         create_shadow_maps();
+
+        create_fullscreen_quad();
+
+        create_ui();
     }
 
-    void onCursorMove(const double x, const double y) NOEXCEPT {
+    void onCursorMove(const double x, const double y) {
         if (!lmb_down) return;
 
         const auto factor = 1.0f;
@@ -618,7 +701,7 @@ public:
         prev_mouse_pos = glm::vec2(x, y);
     }
 
-    void onScroll(const float dx, const float dy) NOEXCEPT {
+    void onScroll(const float dx, const float dy) {
         const auto dir = eye - center;
         const auto dir_length = glm::length(dir);
         const auto scale = 1 - 0.1f * dy;
@@ -630,7 +713,7 @@ public:
     }
 
     void onMouseButton(const int button, const int action, const int mods,
-        const double x, const double y) NOEXCEPT {
+        const float x, const float y) {
         lmb_down = button == 0 && action == 1;
 
         if (!lmb_down) return;
@@ -638,14 +721,14 @@ public:
         prev_mouse_pos = glm::vec2(x, y);
     }
 
-    void onFramebufferResize(const int width, const int height) NOEXCEPT {
+    void onFramebufferResize(const int width, const int height) {
         framebuffer_size = { width, height };
         look_at(eye, center, up);
         perspective(60.0f, static_cast<float>(width) / height, 0.1f, 100.0f);
         update_transf_ubo();
     }
 
-    void onUpdate(const float now, const float elapsed) NOEXCEPT {
+    void onUpdate(const float now, const float elapsed) {
         lights[0].pos.x = 3 * std::cos(0.5f * now);
         lights[0].pos.z = 1.5f * std::sin(0.5f * now);
 
@@ -655,7 +738,7 @@ public:
         shadow_maps_require_update = true;
     }
 
-    void onRender() NOEXCEPT {
+    void onRender() {
         if (shadow_maps_require_update) {
             shadow_map_prepass();
             update_shadow_bias_matrices();
@@ -666,8 +749,10 @@ public:
         reflection_pass();
         lighting_pass();
 
-        debug.draw(normal_tex_id, { 0, 0, framebuffer_size.x / 4, framebuffer_size.y / 4 });
-        debug.draw(occlusion_tex_id, { 3 * framebuffer_size.x / 4, 0, framebuffer_size.x / 4, framebuffer_size.y / 4 });
+        debug.draw(occlusion_tex_id, { 0, 0, framebuffer_size.x / 2, framebuffer_size.y / 2 });
+        // debug.draw(normal_tex_id, { 3 * framebuffer_size.x / 4, 0, framebuffer_size.x / 4, framebuffer_size.y / 4 });
+
+        draw_ui();
     }
 };
 
