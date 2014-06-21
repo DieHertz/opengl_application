@@ -1,4 +1,5 @@
 #include "ui/slider.h"
+#include "ui/vertical_layout.h"
 #include "opengl_application.h"
 #include "debug_surface.h"
 #include "mesh/mesh.h"
@@ -674,24 +675,27 @@ class handler {
 
         ui.panel.reset(new ui::widget{});
 
-        ui.occlusion.radius_x_slider = new ui::slider<float>{ui.panel.get()};
-        ui.occlusion.radius_x_slider->set_pos(5, 5);
+        auto vlayout = new ui::vertical_layout{ui.panel.get()};
+        vlayout->set_offset(5);
+
+        ui.occlusion.radius_x_slider = new ui::slider<float>{vlayout};
         ui.occlusion.radius_x_slider->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.radius_x_slider);
         ui.occlusion.radius_x_slider->set_min_max(0.1f, 50.0f, 5.0f);
 
-        ui.occlusion.radius_y_slider = new ui::slider<float>{ui.panel.get()};
-        ui.occlusion.radius_y_slider->set_pos(5, 25);
+        ui.occlusion.radius_y_slider = new ui::slider<float>{vlayout};
         ui.occlusion.radius_y_slider->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.radius_y_slider);
         ui.occlusion.radius_y_slider->set_min_max(0.1f, 50.0f, 5.0f);
 
-        ui.occlusion.sample_count_slider = new ui::slider<int>{ui.panel.get()};
-        ui.occlusion.sample_count_slider->set_pos(5, 45);
+        ui.occlusion.sample_count_slider = new ui::slider<int>{vlayout};
         ui.occlusion.sample_count_slider->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.sample_count_slider);
         ui.occlusion.sample_count_slider->set_min_max(1, 16, 8);
 
-        ui.camera.fovy_slider = new ui::slider<float>{ui.panel.get()};
-        ui.camera.fovy_slider->set_pos(5, 65);
+        ui.camera.fovy_slider = new ui::slider<float>{vlayout};
         ui.camera.fovy_slider->set_size(150, 15);
+        vlayout->add_widget(ui.camera.fovy_slider);
         ui.camera.fovy_slider->set_min_max(30.0f, 120.0f, 60.0f);
         ui.camera.fovy_slider->on_change([this] (const float fovy) {
             this->fovy = fovy;
@@ -699,9 +703,9 @@ class handler {
             update_transf_ubo();
         });
 
-        ui.lights.light_rotation_frequency_slider = new ui::slider<float>{ui.panel.get()};
-        ui.lights.light_rotation_frequency_slider->set_pos(5, 85);
+        ui.lights.light_rotation_frequency_slider = new ui::slider<float>{vlayout};
         ui.lights.light_rotation_frequency_slider->set_size(150, 15);
+        vlayout->add_widget(ui.lights.light_rotation_frequency_slider);
         ui.lights.light_rotation_frequency_slider->set_min_max(0.1f, 10.0f, 0.5f);
         ui.lights.light_rotation_frequency_slider->on_change([this] (const float freq) {
             this->light_rotation_frequency = freq;

@@ -1,9 +1,10 @@
-#ifndef widget_h
-#define widget_h
+#ifndef ui_widget_h
+#define ui_widget_h
 
+#include "types.h"
 #include "gl/gl_include.h"
 #include "ext.h"
-#include <list>
+#include <vector>
 #include <memory>
 
 namespace ui {
@@ -17,9 +18,6 @@ public:
 
         glGenVertexArrays(1, &vao_id);
         glGenBuffers(1, &vbo_id);
-
-		color[0] = color[1] = color[2] = 0;
-        color[3] = 0.7f;
     }
 
     ~widget() {
@@ -41,20 +39,20 @@ public:
     };
 
     void set_pos(const float x, const float y) {
-        this->x = x;
-        this->y = y;
+        pos = { x, y };
         update_required = true;
     }
+    ui::point get_pos() const { return pos; }
 
     void set_size(const float w, const float h) {
-        this->w = w;
-        this->h = h;
+        size = { w, h };
         update_required = true;
     }
+    ui::size get_size() const { return size; }
 
     bool on_mouse_down(const int button, const int mods, const float x, const float y) {
         for (auto& child : children) {
-            if (child->process_mouse_down(button, mods, x, y)) return true;
+            if (child->on_mouse_down(button, mods, x, y)) return true;
         }
 
         return process_mouse_down(button, mods, x, y);
@@ -62,7 +60,7 @@ public:
 
     bool on_mouse_up(const int button, const int mods, const float x, const float y) {
         for (auto& child : children) {
-            if (child->process_mouse_up(button, mods, x, y)) return true;
+            if (child->on_mouse_up(button, mods, x, y)) return true;
         }
 
         return process_mouse_up(button, mods, x, y);
@@ -70,7 +68,7 @@ public:
 
     bool on_mouse_move(const float x, const float y) {
         for (auto& child : children) {
-            if (child->process_mouse_move(x, y)) return true;
+            if (child->on_mouse_move(x, y)) return true;
         }
 
         return process_mouse_move(x, y);
@@ -78,7 +76,7 @@ public:
 
 private:
     virtual void do_draw() {
-        glUniform4fv(0, 1, color);
+        glUniform4fv(0, 1, gl_value_ptr(color));
 
         glBindVertexArray(vao_id);
         glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -86,12 +84,12 @@ private:
 
     virtual void update_buffers() {
         const GLfloat vertices[] {
-            x, y,
-            x, y + h,
-            x + w, y + h,
-            x + w, y + h,
-            x + w, y,
-            x, y
+            pos.x, pos.y,
+            pos.x, pos.y + size.h,
+            pos.x + size.w, pos.y + size.h,
+            pos.x + size.w, pos.y + size.h,
+            pos.x + size.w, pos.y,
+            pos.x, pos.y
         };
 
         glBindVertexArray(vao_id);
@@ -120,15 +118,15 @@ protected:
     GLuint vao_id;
     GLuint vbo_id;
 
-    GLfloat color[4];
-    float x{}, y{};
-    float w{}, h{};
+    ui::color color = ui::color{ 0, 0, 0, 0.7f };
+    ui::point pos = ui::point{};
+    ui::size size = ui::size{};
 
 private:
     widget* parent;
-    std::list<std::unique_ptr<widget>> children;
+    std::vector<std::unique_ptr<widget>> children;
 };
 
 } /* namespace ui */
 
-#endif /* widget_h */
+#endif /* ui_widget_h */
