@@ -664,14 +664,18 @@ class handler {
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(vertices[0]), 0);
     }
 
-    void create_ui() {
-        ui.program_id = create_ui_shader();
+    void update_ui_transform() {
         ui.window_to_clip_matrix = glm::ortho(0.0f, static_cast<float>(framebuffer_size.x),
-			static_cast<float>(framebuffer_size.y), 0.0f);
+            static_cast<float>(framebuffer_size.y), 0.0f);
         glUseProgram(ui.program_id);
         scope_exit({ glUseProgram(0); });
         glUniformMatrix4fv(glGetUniformLocation(ui.program_id, "window_to_clip_matrix"),
             1, GL_FALSE, glm::value_ptr(ui.window_to_clip_matrix));
+    }
+
+    void create_ui() {
+        ui.program_id = create_ui_shader();
+        update_ui_transform();
 
         ui.panel.reset(new ui::widget{});
 
@@ -800,6 +804,7 @@ public:
         look_at(eye, center, up);
         perspective(fovy, static_cast<float>(width) / height, 0.1f, 100.0f);
         update_transf_ubo();
+        update_ui_transform();
     }
 
     void onUpdate(const float now, const float elapsed) {
@@ -823,7 +828,7 @@ public:
         reflection_pass();
         lighting_pass();
 
-        debug.draw(occlusion_tex_id, { 0, 0, framebuffer_size.x / 2, framebuffer_size.y / 2 });
+        // debug.draw(occlusion_tex_id, { 0, 0, framebuffer_size.x / 2, framebuffer_size.y / 2 });
         // debug.draw(normal_tex_id, { 3 * framebuffer_size.x / 4, 0, framebuffer_size.x / 4, framebuffer_size.y / 4 });
 
         draw_ui();
