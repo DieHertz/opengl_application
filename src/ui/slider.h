@@ -14,7 +14,7 @@ class slider : public widget {
 public:
     slider(widget* parent = nullptr) : widget(parent) {}
 
-    void set_min_max(const T min, const T max, const T val = min + (max - min) / 2) {
+    void set_min_max(const T min, const T max, const T val) {
         this->min = min;
         this->max = max;
         this->val = val;
@@ -22,6 +22,10 @@ public:
         percentage = calc_percentage();
 
         update_required = true;
+    }
+
+    void set_min_max(const T min, const T max) {
+        set_min_max(min, max, min + (max - min) / 2);
     }
 
     T get_value() const { return val; }
@@ -42,7 +46,8 @@ private:
     }
 
     virtual void do_draw() override {
-		glUniform4fv(0, 1, gl_value_ptr(color));
+        glUniform4fv(4, 1, gl_value_ptr(color));
+
         glBindVertexArray(vao_id);
         glDrawArrays(GL_LINES, 0, 2);
         glDrawArrays(GL_TRIANGLES, 2, 6);

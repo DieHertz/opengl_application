@@ -107,7 +107,8 @@ class handler {
     bool camera_dragging = false;
     glm::vec2 prev_mouse_pos;
 
-    glm::ivec2 framebuffer_size;
+    glm::vec2 framebuffer_size;
+    glm::vec2 window_size;
 
     debug_surface debug;
 
@@ -665,8 +666,10 @@ class handler {
     }
 
     void update_ui_transform() {
-        ui.window_to_clip_matrix = glm::ortho(0.0f, static_cast<float>(framebuffer_size.x),
-            static_cast<float>(framebuffer_size.y), 0.0f);
+        ui.window_to_clip_matrix = glm::ortho(
+            0.0f, window_size.x,
+            window_size.y, 0.0f
+        );
         glUseProgram(ui.program_id);
         scope_exit({ glUseProgram(0); });
         glUniformMatrix4fv(glGetUniformLocation(ui.program_id, "window_to_clip_matrix"),
@@ -703,7 +706,7 @@ class handler {
         ui.camera.fovy_slider->set_min_max(30.0f, 120.0f, 60.0f);
         ui.camera.fovy_slider->on_change([this] (const float fovy) {
             this->fovy = fovy;
-            perspective(fovy, static_cast<float>(framebuffer_size.x) / framebuffer_size.y, 0.1f, 100.0f);
+            perspective(fovy, framebuffer_size.x / framebuffer_size.y, 0.1f, 100.0f);
             update_transf_ubo();
         });
 
@@ -717,8 +720,12 @@ class handler {
     }
 
 public:
-    void onContextCreated(const int fb_width, const int fb_height) {
+    void onContextCreated(
+        const int fb_width, const int fb_height,
+        const int window_width, const int window_height
+    ) {
         framebuffer_size = { fb_width, fb_height };
+        window_size = { window_width, window_height };
 
         glEnable(GL_CULL_FACE);
         glEnable(GL_DEPTH_TEST);
@@ -799,8 +806,13 @@ public:
         prev_mouse_pos = glm::vec2(x, y);
     }
 
-    void onFramebufferResize(const int width, const int height) {
+    void onFramebufferResize(
+        const int width, const int height,
+        const int window_width, const int window_height
+    ) {
         framebuffer_size = { width, height };
+        window_size = { window_width, window_height };
+
         look_at(eye, center, up);
         perspective(fovy, static_cast<float>(width) / height, 0.1f, 100.0f);
         update_transf_ubo();

@@ -76,7 +76,7 @@ public:
 
 private:
     virtual void do_draw() {
-        glUniform4fv(0, 1, gl_value_ptr(color));
+        glUniform4fv(4, 1, gl_value_ptr(color));
 
         glBindVertexArray(vao_id);
         glDrawArrays(GL_TRIANGLES, 0, 6);

@@ -49,7 +49,11 @@ public:
         glfwSetFramebufferSizeCallback(p_window, [] (GLFWwindow* w, int width, int height) {
             auto p_handler = static_cast<Handler*>(glfwGetWindowUserPointer(w));
             assert(p_handler);
-            p_handler->onFramebufferResize(width, height);
+
+            int window_width, window_height;
+            glfwGetWindowSize(w, &window_width, &window_height);
+
+            p_handler->onFramebufferResize(width, height, window_width, window_height);
         });
 
         glfwMakeContextCurrent(p_window);
@@ -58,10 +62,12 @@ public:
         if (glewInit() != GLEW_OK) throw std::runtime_error{"glewInit() failed"};
 
         int fb_width, fb_height;
+        int window_width, window_height;
         glfwGetFramebufferSize(p_window, &fb_width, &fb_height);
+        glfwGetWindowSize(p_window, &window_width, &window_height);
 
-        handler.onContextCreated(fb_width, fb_height);
-        handler.onFramebufferResize(fb_width, fb_height);
+        handler.onContextCreated(fb_width, fb_height, window_width, window_height);
+        handler.onFramebufferResize(fb_width, fb_height, window_width, window_height);
     }
 
     ~opengl_application() {
