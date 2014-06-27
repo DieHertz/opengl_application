@@ -807,7 +807,7 @@ public:
         if (action == 1 && ui.panel->on_mouse_down(button, mods, x, y)) return;
         else if (action == 0 && ui.panel->on_mouse_up(button, mods, x, y)) return;
 
-        camera_dragging = button == 0 && action == 1;
+        camera_dragging = button == 2 && action == 1;
 
         if (!camera_dragging) return;
 
