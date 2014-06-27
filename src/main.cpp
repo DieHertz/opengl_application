@@ -14,8 +14,8 @@
 
 const auto MAX_LIGHTS = 8;
 const auto FIRST_SHADOW_MAP_TIU = GL_TEXTURE10;
-const auto SHADOW_MAP_WIDTH = 640;
-const auto SHADOW_MAP_HEIGHT = 480;
+const auto SHADOW_MAP_WIDTH = 1024;
+const auto SHADOW_MAP_HEIGHT = 1024;
 const auto OCCLUSION_MAP_WIDTH = 640;
 const auto OCCLUSION_MAP_HEIGHT = 480;
 const auto SPHERE_REFLECTION_MAP_WIDTH = 256;
@@ -58,14 +58,12 @@ class handler {
     std::vector<glm::mat4> shadow_map_mvp_matrices;
     std::vector<GLuint> shadow_map_tex_ids;
 
-    struct stupid_visual_cpp_compiler_does_not_inplace_initialize_member_of_anonymous_type {
+    struct stupid_visual_cpp_compiler_does_not_perform_inplace_initialization_of_members_of_anonymous_types {
         float fovy = 60.0f;
         glm::vec3 eye{-3, 1.5f, 1};
         glm::vec3 center{0, 0, 0};
         glm::vec3 up{0, 1, 0};
     } camera;
-
-    float light_rotation_frequency = 0.5f;
 
     const glm::mat4 depth_bias_matrix{
         0.5f,   0,      0,      0,
@@ -131,8 +129,9 @@ class handler {
             ui::slider<float>* fovy_slider;
         } camera;
         struct {
-            ui::slider<float>* light_rotation_frequency_slider;
-        } lights;
+            ui::slider<int>* samples;
+            ui::slider<float>* distance;
+        } shadow_maps;
     } ui;
 
     void look_at(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up) {
@@ -218,7 +217,7 @@ class handler {
         const auto aspect_ratio = static_cast<float>(SHADOW_MAP_WIDTH) / SHADOW_MAP_HEIGHT;
         std::transform(std::begin(lights), std::end(lights), std::back_inserter(shadow_map_mvp_matrices),
             [=] (const light& l) {
-                return glm::perspective(glm::radians(45.0f), aspect_ratio, 1.0f, 30.0f) *
+                return glm::perspective(glm::radians(45.0f), aspect_ratio, 1.0f, 100.0f) *
                     glm::lookAt(glm::vec3(l.pos), camera.center, camera.up);
             }
         );
@@ -586,6 +585,11 @@ class handler {
             glActiveTexture(GL_TEXTURE0);
         });
 
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_shadow_samples"),
+            ui.shadow_maps.samples->get_value());
+        glUniform1f(glGetUniformLocation(lighting_program_id, "u_shadow_distance"),
+            ui.shadow_maps.distance->get_value());
+
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, occlusion_tex_id);
 
@@ -712,13 +716,15 @@ class handler {
             update_transf_ubo();
         });
 
-        ui.lights.light_rotation_frequency_slider = new ui::slider<float>{vlayout};
-        ui.lights.light_rotation_frequency_slider->set_size(150, 15);
-        vlayout->add_widget(ui.lights.light_rotation_frequency_slider);
-        ui.lights.light_rotation_frequency_slider->set_min_max(0.1f, 10.0f, 0.5f);
-        ui.lights.light_rotation_frequency_slider->on_change([this] (const float freq) {
-            this->light_rotation_frequency = freq;
-        });
+        ui.shadow_maps.samples = new ui::slider<int>{vlayout};
+        ui.shadow_maps.samples->set_size(150, 15);
+        vlayout->add_widget(ui.shadow_maps.samples);
+        ui.shadow_maps.samples->set_min_max(0, 16, 8);
+
+        ui.shadow_maps.distance = new ui::slider<float>{vlayout};
+        ui.shadow_maps.distance->set_size(150, 15);
+        vlayout->add_widget(ui.shadow_maps.distance);
+        ui.shadow_maps.distance->set_min_max(100.0f, 1000.0f, 600.0f);
     }
 
 public:
@@ -726,12 +732,6 @@ public:
         const int fb_width, const int fb_height,
         const int window_width, const int window_height
     ) {
-		std::cout
-            << camera.fovy << '\n'
-			<< camera.eye.x << ' ' << camera.eye.y << ' ' << camera.eye.z << '\n'
-			<< camera.center.x << ' ' << camera.center.y << ' ' << camera.center.z << '\n'
-			<< camera.up.x << ' ' << camera.up.y << ' ' << camera.up.z << '\n';
-
         framebuffer_size = { fb_width, fb_height };
         window_size = { window_width, window_height };
 
@@ -746,7 +746,7 @@ public:
         ball = create_ball();
         plane = create_plane();
         buddha = {
-			mesh::load_mdl("models/buddha.mdl"),
+			mesh::load_mdl("models/ssao-test-scene.mdl"),
             material{ { 0.707f, 0.707f, 0.707f, 1 }, { 0, 0, 0, 1 }, 0, 0 }
         };
         glGenBuffers(1, &buddha.mtl_buffer_id);
@@ -754,8 +754,8 @@ public:
         glBufferData(GL_UNIFORM_BUFFER, sizeof(buddha.mtl), &buddha.mtl, GL_DYNAMIC_DRAW);
 
         lights = {
-            { { 3, 4.5f, 0, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
-            { { 3, 3, -2, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
+            { { 20, 30, 10, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
+            { { 20, 20, -15, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
         };
 
         create_depth_fbo();
@@ -795,7 +795,7 @@ public:
 		const auto dir = camera.eye - camera.center;
         const auto dir_length = glm::length(dir);
         const auto scale = 1 - 0.1f * dy;
-        const auto length = glm::clamp(dir_length * scale, 1.0f, 5.0f);
+        const auto length = glm::clamp(dir_length * scale, 1.0f, 50.0f);
 
 		camera.eye = camera.center + length / dir_length * dir;
 		look_at(camera.eye, camera.center, camera.up);
@@ -828,8 +828,8 @@ public:
     }
 
     void onUpdate(const float now, const float elapsed) {
-        lights[0].pos.x = 3 * std::cos(light_rotation_frequency * now);
-        lights[0].pos.z = 1.5f * std::sin(light_rotation_frequency * now);
+        lights[0].pos.x = 20 * std::cos(0.25f * now);
+        lights[0].pos.z = 10 * std::sin(0.25f * now);
 
         update_lights_ubo();
         calculate_shadow_mvps();

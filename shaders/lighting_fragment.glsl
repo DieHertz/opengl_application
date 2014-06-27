@@ -46,26 +46,26 @@ uniform sampler2D u_shadow_maps[MAX_LIGHTS];
 uniform mat4 u_shadow_bias_matrices[MAX_LIGHTS];
 
 const vec2 poisson_disk[16] = vec2[](
-    vec2( -0.94201624, -0.39906216 ),
-    vec2( 0.94558609, -0.76890725 ),
-    vec2( -0.094184101, -0.92938870 ),
-    vec2( 0.34495938, 0.29387760 ),
-    vec2( -0.91588581, 0.45771432 ),
-    vec2( -0.81544232, -0.87912464 ),
-    vec2( -0.38277543, 0.27676845 ),
-    vec2( 0.97484398, 0.75648379 ),
-    vec2( 0.44323325, -0.97511554 ),
-    vec2( 0.53742981, -0.47373420 ),
-    vec2( -0.26496911, -0.41893023 ),
-    vec2( 0.79197514, 0.19090188 ),
-    vec2( -0.24188840, 0.99706507 ),
-    vec2( -0.81409955, 0.91437590 ),
-    vec2( 0.19984126, 0.78641367 ),
-    vec2( 0.14383161, -0.14100790 )
+    vec2(-0.94201624, -0.39906216),
+    vec2(0.94558609, -0.76890725),
+    vec2(-0.094184101, -0.92938870),
+    vec2(0.34495938, 0.29387760),
+    vec2(-0.91588581, 0.45771432),
+    vec2(-0.81544232, -0.87912464),
+    vec2(-0.38277543, 0.27676845),
+    vec2(0.97484398, 0.75648379),
+    vec2(0.44323325, -0.97511554),
+    vec2(0.53742981, -0.47373420),
+    vec2(-0.26496911, -0.41893023),
+    vec2(0.79197514, 0.19090188),
+    vec2(-0.24188840, 0.99706507),
+    vec2(-0.81409955, 0.91437590),
+    vec2(0.19984126, 0.78641367),
+    vec2(0.14383161, -0.14100790)
 );
 
-const int shadow_samples_per_fragment = 8;
-const float visibility_per_sample = 0.8 / shadow_samples_per_fragment;
+uniform int u_shadow_samples = 8;
+uniform float u_shadow_distance = 600.0;
 const float bias = 0;
 
 vec3 transform_and_dehomogenize(in vec3 original) {
@@ -106,10 +106,12 @@ void main() {
             texture(u_occlusion_map, tex_coord + vec2(0.001, -0.001)).r +
             texture(u_occlusion_map, tex_coord + vec2(-0.001, 0.001)).r +
             texture(u_occlusion_map, tex_coord + vec2(-0.001, -0.001)).r
-            ) * 0.25;
+        ) * 0.25;
 
         color *= occlusion;
     }
+
+    float visibility_per_sample = 0.8 / u_shadow_samples;
 
     for (int i = 0; i < num_lights; ++i) {
         vec4 shadow_coord = u_shadow_bias_matrices[i] * vec4(v_position, 1.0);
@@ -118,11 +120,11 @@ void main() {
 
         if (0 <= shadow_coord_clipspace.x && shadow_coord_clipspace.x <= 1 &&
             0 <= shadow_coord_clipspace.y && shadow_coord_clipspace.y <= 1) {
-            for (int sample_idx = 0; sample_idx < shadow_samples_per_fragment; ++sample_idx) {
+            for (int sample_idx = 0; sample_idx < u_shadow_samples; ++sample_idx) {
                 int index = sample_idx;
 
                 float sampled_shadow = float(shadow_pcf(i,
-                    vec3(shadow_coord_clipspace.xy + poisson_disk[index] / 200.0,
+                    vec3(shadow_coord_clipspace.xy + poisson_disk[index] / u_shadow_distance,
                     (shadow_coord.z - bias) / shadow_coord.w)));
 
                 visibility -= visibility_per_sample * (1.0 - sampled_shadow);
