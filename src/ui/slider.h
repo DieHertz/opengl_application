@@ -46,7 +46,7 @@ private:
     }
 
     virtual void do_draw() override {
-        glUniform4fv(4, 1, gl_value_ptr(color));
+        glUniform4fv(0, 1, gl_value_ptr(color));
 
         glBindVertexArray(vao_id);
         glDrawArrays(GL_LINES, 0, 2);

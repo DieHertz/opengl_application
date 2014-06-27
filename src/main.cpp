@@ -58,10 +58,12 @@ class handler {
     std::vector<glm::mat4> shadow_map_mvp_matrices;
     std::vector<GLuint> shadow_map_tex_ids;
 
-    float fovy = 60.0f;
-    glm::vec3 eye{-3, 1.5f, 1};
-    glm::vec3 center{0, 0, 0};
-    glm::vec3 up{0, 1, 0};
+    struct stupid_visual_cpp_compiler_does_not_inplace_initialize_member_of_anonymous_type {
+        float fovy = 60.0f;
+        glm::vec3 eye{-3, 1.5f, 1};
+        glm::vec3 center{0, 0, 0};
+        glm::vec3 up{0, 1, 0};
+    } camera;
 
     float light_rotation_frequency = 0.5f;
 
@@ -146,16 +148,16 @@ class handler {
     }
 
     void camera_up(const float degrees) {
-        const auto ortho = glm::normalize(glm::cross(eye, up));
+        const auto ortho = glm::normalize(glm::cross(camera.eye, camera.up));
 
-        eye = glm::vec3(glm::vec4(eye, 1) * glm::rotate(glm::mat4(), glm::radians(degrees), ortho));
+        camera.eye = glm::vec3(glm::vec4(camera.eye, 1) * glm::rotate(glm::mat4(), glm::radians(degrees), ortho));
         // up = glm::vec3(glm::vec4(up, 0) * glm::rotate(glm::mat4(), glm::radians(degrees), ortho));
     }
 
     void camera_left(const float degrees) {
-        const auto eye = glm::vec4(this->eye, 1) * glm::rotate(glm::mat4(), glm::radians(degrees), up);
+        const auto eye = glm::vec4(camera.eye, 1) * glm::rotate(glm::mat4(), glm::radians(degrees), camera.up);
 
-        this->eye = glm::vec3(eye);
+        camera.eye = glm::vec3(eye);
     }
 
     void create_transf_ubo() {
@@ -217,7 +219,7 @@ class handler {
         std::transform(std::begin(lights), std::end(lights), std::back_inserter(shadow_map_mvp_matrices),
             [=] (const light& l) {
                 return glm::perspective(glm::radians(45.0f), aspect_ratio, 1.0f, 30.0f) *
-                    glm::lookAt(glm::vec3(l.pos), center, up);
+                    glm::lookAt(glm::vec3(l.pos), camera.center, camera.up);
             }
         );
     }
@@ -557,7 +559,7 @@ class handler {
             glViewport(0, 0, SPHERE_REFLECTION_MAP_WIDTH, SPHERE_REFLECTION_MAP_HEIGHT);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            look_at(center, directions[face][0], directions[face][1]);
+			look_at(camera.center, directions[face][0], directions[face][1]);
             update_transf_ubo();
 
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
@@ -705,7 +707,7 @@ class handler {
         vlayout->add_widget(ui.camera.fovy_slider);
         ui.camera.fovy_slider->set_min_max(30.0f, 120.0f, 60.0f);
         ui.camera.fovy_slider->on_change([this] (const float fovy) {
-            this->fovy = fovy;
+			camera.fovy = fovy;
             perspective(fovy, framebuffer_size.x / framebuffer_size.y, 0.1f, 100.0f);
             update_transf_ubo();
         });
@@ -724,6 +726,12 @@ public:
         const int fb_width, const int fb_height,
         const int window_width, const int window_height
     ) {
+		std::cout
+            << camera.fovy << '\n'
+			<< camera.eye.x << ' ' << camera.eye.y << ' ' << camera.eye.z << '\n'
+			<< camera.center.x << ' ' << camera.center.y << ' ' << camera.center.z << '\n'
+			<< camera.up.x << ' ' << camera.up.y << ' ' << camera.up.z << '\n';
+
         framebuffer_size = { fb_width, fb_height };
         window_size = { window_width, window_height };
 
@@ -777,20 +785,20 @@ public:
         camera_left(diff.x);
         camera_up(-diff.y);
 
-        look_at(eye, center, up);
+		look_at(camera.eye, camera.center, camera.up);
         update_transf_ubo();
 
         prev_mouse_pos = glm::vec2(x, y);
     }
 
     void onScroll(const float dx, const float dy) {
-        const auto dir = eye - center;
+		const auto dir = camera.eye - camera.center;
         const auto dir_length = glm::length(dir);
         const auto scale = 1 - 0.1f * dy;
         const auto length = glm::clamp(dir_length * scale, 1.0f, 5.0f);
 
-        eye = center + length / dir_length * dir;
-        look_at(eye, center, up);
+		camera.eye = camera.center + length / dir_length * dir;
+		look_at(camera.eye, camera.center, camera.up);
         update_transf_ubo();
     }
 
@@ -813,8 +821,8 @@ public:
         framebuffer_size = { width, height };
         window_size = { window_width, window_height };
 
-        look_at(eye, center, up);
-        perspective(fovy, static_cast<float>(width) / height, 0.1f, 100.0f);
+		look_at(camera.eye, camera.center, camera.up);
+        perspective(camera.fovy, static_cast<float>(width) / height, 0.1f, 100.0f);
         update_transf_ubo();
         update_ui_transform();
     }
