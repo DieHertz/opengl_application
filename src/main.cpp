@@ -132,6 +132,8 @@ class handler {
             ui::slider<float>* offset_slider;
             ui::slider<float>* falloff_slider;
             ui::slider<float>* rad_slider;
+            ui::slider<float>* blur_size_x;
+            ui::slider<float>* blur_size_y;
         } occlusion;
         struct {
             ui::slider<int>* samples;
@@ -572,7 +574,9 @@ class handler {
         glBindTexture(GL_TEXTURE_2D, occlusion_tex_id);
         glUseProgram(horizontal_blur_program_id);
         glUniform1i(glGetUniformLocation(horizontal_blur_program_id, "u_sampler"), 0);
-        glUniform1f(glGetUniformLocation(horizontal_blur_program_id, "u_size"), 1.0f / OCCLUSION_MAP_WIDTH);
+        glUniform1f(glGetUniformLocation(horizontal_blur_program_id, "u_size"),
+            ui.occlusion.blur_size_x->get_value() / OCCLUSION_MAP_WIDTH
+        );
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -581,7 +585,9 @@ class handler {
         glBindTexture(GL_TEXTURE_2D, occlusion_blurred_tex_id);
         glUseProgram(vertical_blur_program_id);
         glUniform1i(glGetUniformLocation(vertical_blur_program_id, "u_sampler"), 0);
-        glUniform1f(glGetUniformLocation(vertical_blur_program_id, "u_size"), 1.0f / OCCLUSION_MAP_HEIGHT);
+        glUniform1f(glGetUniformLocation(vertical_blur_program_id, "u_size"),
+            ui.occlusion.blur_size_y->get_value() / OCCLUSION_MAP_HEIGHT
+        );
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -758,7 +764,7 @@ class handler {
         ui.occlusion.tot_strength_slider = new ui::slider<float>{vlayout};
         ui.occlusion.tot_strength_slider->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.tot_strength_slider);
-        ui.occlusion.tot_strength_slider->set_min_max(0.1f, 10.0f, 3.0f);
+        ui.occlusion.tot_strength_slider->set_min_max(0.1f, 10.0f, 1.5f);
 
         ui.occlusion.strength_slider = new ui::slider<float>{vlayout};
         ui.occlusion.strength_slider->set_size(150, 15);
@@ -784,6 +790,16 @@ class handler {
         ui.occlusion.rad_slider->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.rad_slider);
         ui.occlusion.rad_slider->set_min_max(0.001f, 0.01f, 0.001f);
+
+        ui.occlusion.blur_size_x = new ui::slider<float>{vlayout};
+        ui.occlusion.blur_size_x->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.blur_size_x);
+        ui.occlusion.blur_size_x->set_min_max(0.1f, 5.0f, 1.0f);
+
+        ui.occlusion.blur_size_y = new ui::slider<float>{vlayout};
+        ui.occlusion.blur_size_y->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.blur_size_y);
+        ui.occlusion.blur_size_y->set_min_max(0.1f, 5.0f, 1.0f);
 
         ui.shadow_maps.samples = new ui::slider<int>{vlayout};
         ui.shadow_maps.samples->set_size(150, 15);
