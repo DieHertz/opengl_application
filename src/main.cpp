@@ -52,7 +52,7 @@ struct transformations {
 class handler {
     scene_object ball;
     scene_object plane;
-    scene_object buddha;
+    scene_object scene_model;
 
     std::vector<light> lights;
     std::vector<glm::mat4> shadow_map_mvp_matrices;
@@ -99,8 +99,12 @@ class handler {
     GLuint occlusion_fbo_id;
     GLuint occlusion_renderbuffer_id;
     GLuint occlusion_tex_id;
+    GLuint occlusion_blurred_tex_id;
+    GLuint noise_tex_id;
 
     GLuint occlusion_program_id;
+    GLuint horizontal_blur_program_id;
+    GLuint vertical_blur_program_id;
 
     bool shadow_maps_require_update = true;
 
@@ -119,15 +123,16 @@ class handler {
     struct {
         GLuint program_id;
         glm::mat4 window_to_clip_matrix;
+
         std::unique_ptr<ui::widget> panel;
         struct {
-            ui::slider<float>* radius_x_slider;
-            ui::slider<float>* radius_y_slider;
+            ui::slider<float>* tot_strength_slider;
+            ui::slider<float>* strength_slider;
             ui::slider<int>* sample_count_slider;
+            ui::slider<float>* offset_slider;
+            ui::slider<float>* falloff_slider;
+            ui::slider<float>* rad_slider;
         } occlusion;
-        struct {
-            ui::slider<float>* fovy_slider;
-        } camera;
         struct {
             ui::slider<int>* samples;
             ui::slider<float>* distance;
@@ -235,8 +240,8 @@ class handler {
 
         glGenTextures(1, &normal_tex_id);
         glBindTexture(GL_TEXTURE_2D, normal_tex_id);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, SHADOW_MAP_WIDTH, SHADOW_MAP_HEIGHT,
-            0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, SHADOW_MAP_WIDTH, SHADOW_MAP_HEIGHT,
+            0, GL_RGBA, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -293,8 +298,8 @@ class handler {
 
         glGenTextures(1, &occlusion_tex_id);
         glBindTexture(GL_TEXTURE_2D, occlusion_tex_id);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, OCCLUSION_MAP_WIDTH, OCCLUSION_MAP_HEIGHT,
-            0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, OCCLUSION_MAP_WIDTH, OCCLUSION_MAP_HEIGHT,
+            0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
@@ -370,6 +375,31 @@ class handler {
 
         const auto transf_block_index = glGetUniformBlockIndex(program_id, "transformations");
         glUniformBlockBinding(program_id, transf_block_index, transf_binding_point);
+
+        noise_tex_id = gl::load_png_texture("textures/noise.png");
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+        glGenTextures(1, &occlusion_blurred_tex_id);
+        glBindTexture(GL_TEXTURE_2D, occlusion_blurred_tex_id);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, OCCLUSION_MAP_WIDTH, OCCLUSION_MAP_HEIGHT,
+            0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+        const std::pair<const char*, GLenum> horizontal_blur_shaders[] {
+            { "shaders/occlusion_vertex.glsl", GL_VERTEX_SHADER },
+            { "shaders/horizontal_blur_fragment.glsl", GL_FRAGMENT_SHADER },
+        };
+        horizontal_blur_program_id = gl::load_shader_program(horizontal_blur_shaders);
+        gl::link_shader_program(horizontal_blur_program_id);
+
+        const std::pair<const char*, GLenum> vertical_blur_shaders[] {
+            { "shaders/occlusion_vertex.glsl", GL_VERTEX_SHADER },
+            { "shaders/vertical_blur_fragment.glsl", GL_FRAGMENT_SHADER },
+        };
+        vertical_blur_program_id = gl::load_shader_program(vertical_blur_shaders);
+        gl::link_shader_program(vertical_blur_program_id);
 
         return program_id;
     }
@@ -455,8 +485,8 @@ class handler {
             glBindVertexArray(ball.mesh.vao_id);
             glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
 
-            glBindVertexArray(buddha.mesh.vao_id);
-            glDrawElements(buddha.mesh.primitive_mode, buddha.mesh.num_indices, buddha.mesh.index_type, nullptr);
+            glBindVertexArray(scene_model.mesh.vao_id);
+            glDrawElements(scene_model.mesh.primitive_mode, scene_model.mesh.num_indices, scene_model.mesh.index_type, nullptr);
         }
     }
 
@@ -482,8 +512,8 @@ class handler {
         glBindVertexArray(ball.mesh.vao_id);
         glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
 
-        glBindVertexArray(buddha.mesh.vao_id);
-        glDrawElements(buddha.mesh.primitive_mode, buddha.mesh.num_indices, buddha.mesh.index_type, nullptr);
+        glBindVertexArray(scene_model.mesh.vao_id);
+        glDrawElements(scene_model.mesh.primitive_mode, scene_model.mesh.num_indices, scene_model.mesh.index_type, nullptr);
 
         transf.depth_bias_matrix = depth_bias_matrix * transf.mvp_matrix;
         update_transf_ubo();
@@ -506,23 +536,55 @@ class handler {
         });
 
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, depth_tex_id);
+        glBindTexture(GL_TEXTURE_2D, noise_tex_id);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, normal_tex_id);
-        glUniform1i(glGetUniformLocation(occlusion_program_id, "u_depth_map"), 0);
-        glUniform1i(glGetUniformLocation(occlusion_program_id, "u_normal_map"), 1);
-
-        GLfloat radius[] {
-            ui.occlusion.radius_x_slider->get_value() / SHADOW_MAP_WIDTH,
-            ui.occlusion.radius_y_slider->get_value() / SHADOW_MAP_HEIGHT
-        };
-
-        glUniform2fv(glGetUniformLocation(occlusion_program_id, "u_radius"), 1, radius);
+        glUniform1i(glGetUniformLocation(occlusion_program_id, "u_noise_map"), 0);
+        glUniform1i(glGetUniformLocation(occlusion_program_id, "u_normal_depth_map"), 1);
+        glUniform1f(glGetUniformLocation(occlusion_program_id, "tot_strength"),
+            ui.occlusion.tot_strength_slider->get_value());
+        glUniform1f(glGetUniformLocation(occlusion_program_id, "strength"),
+            ui.occlusion.strength_slider->get_value());
         glUniform1i(glGetUniformLocation(occlusion_program_id, "u_sample_count"),
             ui.occlusion.sample_count_slider->get_value());
+        glUniform1f(glGetUniformLocation(occlusion_program_id, "offset"),
+            ui.occlusion.offset_slider->get_value());
+        glUniform1f(glGetUniformLocation(occlusion_program_id, "falloff"),
+            ui.occlusion.falloff_slider->get_value());
+        glUniform1f(glGetUniformLocation(occlusion_program_id, "rad"),
+            ui.occlusion.rad_slider->get_value());
 
         glBindVertexArray(fullscreen_quad.vao_id);
         glDrawArrays(GL_TRIANGLES, 0, 6); 
+    }
+
+    void blur_occlusion_pass() {
+        glBindFramebuffer(GL_FRAMEBUFFER, occlusion_fbo_id);
+        scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
+
+        glViewport(0, 0, OCCLUSION_MAP_WIDTH, OCCLUSION_MAP_HEIGHT);
+
+        glBindVertexArray(fullscreen_quad.vao_id);
+
+        glActiveTexture(GL_TEXTURE0);
+
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, occlusion_blurred_tex_id, 0);
+        glBindTexture(GL_TEXTURE_2D, occlusion_tex_id);
+        glUseProgram(horizontal_blur_program_id);
+        glUniform1i(glGetUniformLocation(horizontal_blur_program_id, "u_sampler"), 0);
+        glUniform1f(glGetUniformLocation(horizontal_blur_program_id, "u_size"), 1.0f / OCCLUSION_MAP_WIDTH);
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, occlusion_tex_id, 0);
+        glBindTexture(GL_TEXTURE_2D, occlusion_blurred_tex_id);
+        glUseProgram(vertical_blur_program_id);
+        glUniform1i(glGetUniformLocation(vertical_blur_program_id, "u_sampler"), 0);
+        glUniform1f(glGetUniformLocation(vertical_blur_program_id, "u_size"), 1.0f / OCCLUSION_MAP_HEIGHT);
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
     }
 
     void reflection_pass() {
@@ -618,9 +680,9 @@ class handler {
         glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
 
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), false);
-        glBindVertexArray(buddha.mesh.vao_id);
-        glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, buddha.mtl_buffer_id);
-        glDrawElements(buddha.mesh.primitive_mode, buddha.mesh.num_indices, buddha.mesh.index_type, nullptr);
+        glBindVertexArray(scene_model.mesh.vao_id);
+        glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, scene_model.mtl_buffer_id);
+        glDrawElements(scene_model.mesh.primitive_mode, scene_model.mesh.num_indices, scene_model.mesh.index_type, nullptr);
     }
 
     GLuint create_ui_shader() {
@@ -641,9 +703,11 @@ class handler {
         glDisable(GL_CULL_FACE);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthFunc(GL_ALWAYS);
         scope_exit({
             glEnable(GL_CULL_FACE);
             glDisable(GL_BLEND);
+            glDepthFunc(GL_LESS);
         });
 
         glUseProgram(ui.program_id);
@@ -691,30 +755,35 @@ class handler {
         auto vlayout = new ui::vertical_layout{ui.panel.get()};
         vlayout->set_offset(5);
 
-        ui.occlusion.radius_x_slider = new ui::slider<float>{vlayout};
-        ui.occlusion.radius_x_slider->set_size(150, 15);
-        vlayout->add_widget(ui.occlusion.radius_x_slider);
-        ui.occlusion.radius_x_slider->set_min_max(0.1f, 50.0f, 5.0f);
+        ui.occlusion.tot_strength_slider = new ui::slider<float>{vlayout};
+        ui.occlusion.tot_strength_slider->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.tot_strength_slider);
+        ui.occlusion.tot_strength_slider->set_min_max(0.1f, 10.0f, 3.0f);
 
-        ui.occlusion.radius_y_slider = new ui::slider<float>{vlayout};
-        ui.occlusion.radius_y_slider->set_size(150, 15);
-        vlayout->add_widget(ui.occlusion.radius_y_slider);
-        ui.occlusion.radius_y_slider->set_min_max(0.1f, 50.0f, 5.0f);
+        ui.occlusion.strength_slider = new ui::slider<float>{vlayout};
+        ui.occlusion.strength_slider->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.strength_slider);
+        ui.occlusion.strength_slider->set_min_max(0.01f, 1.0f, 0.015f);
 
         ui.occlusion.sample_count_slider = new ui::slider<int>{vlayout};
         ui.occlusion.sample_count_slider->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.sample_count_slider);
-        ui.occlusion.sample_count_slider->set_min_max(1, 16, 8);
+        ui.occlusion.sample_count_slider->set_min_max(1, 16, 16);
 
-        ui.camera.fovy_slider = new ui::slider<float>{vlayout};
-        ui.camera.fovy_slider->set_size(150, 15);
-        vlayout->add_widget(ui.camera.fovy_slider);
-        ui.camera.fovy_slider->set_min_max(30.0f, 120.0f, 60.0f);
-        ui.camera.fovy_slider->on_change([this] (const float fovy) {
-			camera.fovy = fovy;
-            perspective(fovy, framebuffer_size.x / framebuffer_size.y, 0.1f, 100.0f);
-            update_transf_ubo();
-        });
+        ui.occlusion.offset_slider = new ui::slider<float>{vlayout};
+        ui.occlusion.offset_slider->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.offset_slider);
+        ui.occlusion.offset_slider->set_min_max(1.0f, 30.0f, 30.0f);
+
+        ui.occlusion.falloff_slider = new ui::slider<float>{vlayout};
+        ui.occlusion.falloff_slider->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.falloff_slider);
+        ui.occlusion.falloff_slider->set_min_max(0, 0.01f, 0.000002f);
+
+        ui.occlusion.rad_slider = new ui::slider<float>{vlayout};
+        ui.occlusion.rad_slider->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.rad_slider);
+        ui.occlusion.rad_slider->set_min_max(0.001f, 0.01f, 0.001f);
 
         ui.shadow_maps.samples = new ui::slider<int>{vlayout};
         ui.shadow_maps.samples->set_size(150, 15);
@@ -745,13 +814,13 @@ public:
 
         ball = create_ball();
         plane = create_plane();
-        buddha = {
+        scene_model = {
 			mesh::load_mdl("models/ssao-test-scene.mdl"),
             material{ { 0.707f, 0.707f, 0.707f, 1 }, { 0, 0, 0, 1 }, 0, 0 }
         };
-        glGenBuffers(1, &buddha.mtl_buffer_id);
-        glBindBuffer(GL_UNIFORM_BUFFER, buddha.mtl_buffer_id);
-        glBufferData(GL_UNIFORM_BUFFER, sizeof(buddha.mtl), &buddha.mtl, GL_DYNAMIC_DRAW);
+        glGenBuffers(1, &scene_model.mtl_buffer_id);
+        glBindBuffer(GL_UNIFORM_BUFFER, scene_model.mtl_buffer_id);
+        glBufferData(GL_UNIFORM_BUFFER, sizeof(scene_model.mtl), &scene_model.mtl, GL_DYNAMIC_DRAW);
 
         lights = {
             { { 20, 30, 10, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
@@ -845,6 +914,7 @@ public:
 
         depth_prepass();
         occlusion_pass();
+        blur_occlusion_pass();
         reflection_pass();
         lighting_pass();
 

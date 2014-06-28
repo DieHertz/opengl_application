@@ -96,19 +96,13 @@ void main() {
     vec3 eye_dir = normalize(eye_position - pos_dehomognized);
     vec3 normal = normalize(normal_matrix * v_normal);
 
-    vec4 color = ambient;
+    vec4 color = diffuse * 0.3;
 
+    float occlusion = 1.0;
     if (u_occlusion) {
         vec4 tmp = mvp_matrix * vec4(v_position, 1);
         vec2 tex_coord = tmp.xy / tmp.w * 0.5 + 0.5;
-        float occlusion = (
-            texture(u_occlusion_map, tex_coord + vec2(0.001, 0.001)).r +
-            texture(u_occlusion_map, tex_coord + vec2(0.001, -0.001)).r +
-            texture(u_occlusion_map, tex_coord + vec2(-0.001, 0.001)).r +
-            texture(u_occlusion_map, tex_coord + vec2(-0.001, -0.001)).r
-        ) * 0.25;
-
-        color *= occlusion;
+        occlusion = texture(u_occlusion_map, tex_coord).r;
     }
 
     float visibility_per_sample = 0.8 / u_shadow_samples;
@@ -140,5 +134,5 @@ void main() {
         }
     }
 
-    frag_color = color;
+    frag_color = color * occlusion;
 }
