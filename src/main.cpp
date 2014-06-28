@@ -1,5 +1,6 @@
 #include "ui/slider.h"
 #include "ui/vertical_layout.h"
+#include "ui/text.h"
 #include "opengl_application.h"
 #include "debug_surface.h"
 #include "mesh/mesh.h"
@@ -120,6 +121,7 @@ class handler {
     struct {
         GLuint program_id;
         glm::mat4 window_to_clip_matrix;
+        std::shared_ptr<ui::font> p_font;
 
         std::unique_ptr<ui::widget> panel;
         struct {
@@ -717,8 +719,7 @@ class handler {
         });
 
         glUseProgram(ui.program_id);
-
-        ui.panel->draw();
+        ui.panel->draw(ui.program_id);
     }
 
     void create_fullscreen_quad() {
@@ -756,57 +757,61 @@ class handler {
         ui.program_id = create_ui_shader();
         update_ui_transform();
 
+        std::ifstream font_file("fonts/sourcecodepro-light.fnt");
+        ui.p_font = std::make_shared<ui::font>(font_file);
+
         ui.panel.reset(new ui::widget{});
 
         auto vlayout = new ui::vertical_layout{ui.panel.get()};
+        vlayout->set_pos(5, 0);
         vlayout->set_offset(5);
 
-        ui.occlusion.tot_strength_slider = new ui::slider<float>{vlayout};
+        ui.occlusion.tot_strength_slider = new ui::slider<float>{"ssao.tot_strength", ui.p_font, vlayout};
         ui.occlusion.tot_strength_slider->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.tot_strength_slider);
         ui.occlusion.tot_strength_slider->set_min_max(0.1f, 10.0f, 1.5f);
 
-        ui.occlusion.strength_slider = new ui::slider<float>{vlayout};
+        ui.occlusion.strength_slider = new ui::slider<float>{"ssao.strength", ui.p_font, vlayout};
         ui.occlusion.strength_slider->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.strength_slider);
         ui.occlusion.strength_slider->set_min_max(0.01f, 1.0f, 0.015f);
 
-        ui.occlusion.sample_count_slider = new ui::slider<int>{vlayout};
+        ui.occlusion.sample_count_slider = new ui::slider<int>{"ssao.sample_count", ui.p_font, vlayout};
         ui.occlusion.sample_count_slider->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.sample_count_slider);
         ui.occlusion.sample_count_slider->set_min_max(0, 16, 16);
 
-        ui.occlusion.offset_slider = new ui::slider<float>{vlayout};
+        ui.occlusion.offset_slider = new ui::slider<float>{"ssao.offset", ui.p_font, vlayout};
         ui.occlusion.offset_slider->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.offset_slider);
         ui.occlusion.offset_slider->set_min_max(1.0f, 30.0f, 30.0f);
 
-        ui.occlusion.falloff_slider = new ui::slider<float>{vlayout};
+        ui.occlusion.falloff_slider = new ui::slider<float>{"ssao.falloff", ui.p_font, vlayout};
         ui.occlusion.falloff_slider->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.falloff_slider);
         ui.occlusion.falloff_slider->set_min_max(0, 0.01f, 0.000002f);
 
-        ui.occlusion.rad_slider = new ui::slider<float>{vlayout};
+        ui.occlusion.rad_slider = new ui::slider<float>{"ssao.radius", ui.p_font, vlayout};
         ui.occlusion.rad_slider->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.rad_slider);
         ui.occlusion.rad_slider->set_min_max(0.001f, 0.01f, 0.001f);
 
-        ui.occlusion.hblur_size = new ui::slider<float>{vlayout};
+        ui.occlusion.hblur_size = new ui::slider<float>{"ssao.hblur_size", ui.p_font, vlayout};
         ui.occlusion.hblur_size->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.hblur_size);
         ui.occlusion.hblur_size->set_min_max(0.1f, 2.0f, 1.0f);
 
-        ui.occlusion.vblur_size = new ui::slider<float>{vlayout};
+        ui.occlusion.vblur_size = new ui::slider<float>{"ssao.vblur_size", ui.p_font, vlayout};
         ui.occlusion.vblur_size->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.vblur_size);
         ui.occlusion.vblur_size->set_min_max(0.1f, 2.0f, 1.0f);
 
-        ui.shadow_maps.samples = new ui::slider<int>{vlayout};
+        ui.shadow_maps.samples = new ui::slider<int>{"sm.sample_count", ui.p_font, vlayout};
         ui.shadow_maps.samples->set_size(150, 15);
         vlayout->add_widget(ui.shadow_maps.samples);
         ui.shadow_maps.samples->set_min_max(0, 16, 8);
 
-        ui.shadow_maps.distance = new ui::slider<float>{vlayout};
+        ui.shadow_maps.distance = new ui::slider<float>{"sm.poisson_distance", ui.p_font, vlayout};
         ui.shadow_maps.distance->set_size(150, 15);
         vlayout->add_widget(ui.shadow_maps.distance);
         ui.shadow_maps.distance->set_min_max(100.0f, 1000.0f, 600.0f);
@@ -830,10 +835,10 @@ public:
 
         ball = create_ball();
         plane = create_plane();
-   //      scene_model = {
-			// mesh::load_mdl("models/ssao-test-scene.mdl"),
-   //          material{ { 0.707f, 0.707f, 0.707f, 1 }, { 0, 0, 0, 1 }, 0, 0 }
-   //      };
+        scene_model = {
+			mesh::load_mdl("models/ssao-test-scene.mdl"),
+            material{ { 0.707f, 0.707f, 0.707f, 1 }, { 0, 0, 0, 1 }, 0, 0 }
+        };
         glGenBuffers(1, &scene_model.mtl_buffer_id);
         glBindBuffer(GL_UNIFORM_BUFFER, scene_model.mtl_buffer_id);
         glBufferData(GL_UNIFORM_BUFFER, sizeof(scene_model.mtl), &scene_model.mtl, GL_DYNAMIC_DRAW);

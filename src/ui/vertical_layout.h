@@ -7,7 +7,7 @@ namespace ui {
 
 class vertical_layout : public widget {
 public:
-    vertical_layout(widget* parent = nullptr) : widget(parent) {}
+    vertical_layout(widget* parent = nullptr) : widget{parent} {}
 
     void set_offset(const float offset) { this->offset = offset; }
 

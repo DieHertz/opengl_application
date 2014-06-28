@@ -28,15 +28,19 @@ public:
     widget(const widget&) = delete;
     widget& operator=(const widget&) = delete;
 
-    void draw() {
+    void draw(const GLuint program_id) {
         if (update_required) {
             update_buffers();
-            update_required = false;
         }
 
-        do_draw();
-        for (auto& child : children) child->draw();
+        do_draw(program_id);
+        for (auto& child : children) child->draw(program_id);
     };
+
+    void update_buffers() {
+        do_update_buffers();
+        update_required = false;
+    }
 
     void set_pos(const float x, const float y) {
         pos = { x, y };
@@ -49,6 +53,9 @@ public:
         update_required = true;
     }
     ui::size get_size() const { return size; }
+
+    void set_color(const ui::color& color) { this->color = color; }
+    const ui::color& get_color() const { return color; }
 
     bool on_mouse_down(const int button, const int mods, const float x, const float y) {
         for (auto& child : children) {
@@ -75,14 +82,14 @@ public:
     }
 
 private:
-    virtual void do_draw() {
-        glUniform4fv(0, 1, gl_value_ptr(color));
+    virtual void do_draw(const GLuint program_id) {
+        glUniform4fv(glGetUniformLocation(program_id, "color"), 1, gl_value_ptr(color));
 
         glBindVertexArray(vao_id);
         glDrawArrays(GL_TRIANGLES, 0, 6);
     }
 
-    virtual void update_buffers() {
+    virtual void do_update_buffers() {
         const GLfloat vertices[] {
             pos.x, pos.y,
             pos.x, pos.y + size.h,
