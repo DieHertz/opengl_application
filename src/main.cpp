@@ -646,7 +646,7 @@ class handler {
     }
 
     void lighting_pass() {
-        glViewport(0, 0, framebuffer_size.x, framebuffer_size.y);
+        glViewport(0, 0, static_cast<int>(framebuffer_size.x), static_cast<int>(framebuffer_size.y));
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(lighting_program_id);
@@ -706,7 +706,7 @@ class handler {
     }
 
     void draw_ui() {
-        glViewport(0, 0, framebuffer_size.x, framebuffer_size.y);
+		glViewport(0, 0, static_cast<int>(framebuffer_size.x), static_cast<int>(framebuffer_size.y));
 
         glDisable(GL_CULL_FACE);
         glEnable(GL_BLEND);

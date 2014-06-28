@@ -94,7 +94,7 @@ private:
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
 
         label->set_pos(pos.x + 1.05f * size.w, pos.y - 0.2f * size.h);
-        value_text->set_pos(label->get_pos().x + 1.05 * label->get_size().w, label->get_pos().y);
+        value_text->set_pos(label->get_pos().x + 1.05f * label->get_size().w, label->get_pos().y);
     }
 
     virtual bool process_mouse_down(const int button, const int mods, const float x, const float y) override {

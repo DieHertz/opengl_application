@@ -83,7 +83,7 @@ private:
 
         vertices = {};
 
-        set_size(cursor.x - pos.x, p_font->get_line_height());
+        set_size(cursor.x - pos.x, static_cast<float>(p_font->get_line_height()));
 
         update_required = false;
     }

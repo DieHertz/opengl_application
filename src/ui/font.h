@@ -34,8 +34,8 @@ public:
     }
 
     GLuint get_tex_id() const { return tex_id; }
-    ui::size get_tex_size() const { return { scale_w, scale_h }; }
-    float get_line_height() const { return line_height; }
+    ui::size get_tex_size() const { return { static_cast<float>(scale_w), static_cast<float>(scale_h) }; }
+    int get_line_height() const { return line_height; }
 
 
 
