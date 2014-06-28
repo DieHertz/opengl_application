@@ -200,6 +200,7 @@ class handler {
 
         scope_exit({ glActiveTexture(GL_TEXTURE0); });
 
+        GLfloat border_color[] { 1.0f, 0, 0, 0 };
         for (size_t i = 0; i < lights.size(); ++i) {
             glActiveTexture(FIRST_SHADOW_MAP_TIU + i);
             glBindTexture(GL_TEXTURE_2D, shadow_map_tex_ids[i]);
@@ -210,6 +211,8 @@ class handler {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+            glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color);
         }
 
         calculate_shadow_mvps();
@@ -791,12 +794,12 @@ class handler {
         ui.occlusion.hblur_size = new ui::slider<float>{vlayout};
         ui.occlusion.hblur_size->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.hblur_size);
-        ui.occlusion.hblur_size->set_min_max(0.1f, 5.0f, 1.0f);
+        ui.occlusion.hblur_size->set_min_max(0.1f, 2.0f, 1.0f);
 
         ui.occlusion.vblur_size = new ui::slider<float>{vlayout};
         ui.occlusion.vblur_size->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.vblur_size);
-        ui.occlusion.vblur_size->set_min_max(0.1f, 5.0f, 1.0f);
+        ui.occlusion.vblur_size->set_min_max(0.1f, 2.0f, 1.0f);
 
         ui.shadow_maps.samples = new ui::slider<int>{vlayout};
         ui.shadow_maps.samples->set_size(150, 15);
@@ -827,10 +830,10 @@ public:
 
         ball = create_ball();
         plane = create_plane();
-        scene_model = {
-			mesh::load_mdl("models/ssao-test-scene.mdl"),
-            material{ { 0.707f, 0.707f, 0.707f, 1 }, { 0, 0, 0, 1 }, 0, 0 }
-        };
+   //      scene_model = {
+			// mesh::load_mdl("models/ssao-test-scene.mdl"),
+   //          material{ { 0.707f, 0.707f, 0.707f, 1 }, { 0, 0, 0, 1 }, 0, 0 }
+   //      };
         glGenBuffers(1, &scene_model.mtl_buffer_id);
         glBindBuffer(GL_UNIFORM_BUFFER, scene_model.mtl_buffer_id);
         glBufferData(GL_UNIFORM_BUFFER, sizeof(scene_model.mtl), &scene_model.mtl, GL_DYNAMIC_DRAW);

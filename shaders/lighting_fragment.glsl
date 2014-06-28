@@ -42,7 +42,7 @@ uniform bool u_textured;
 uniform bool u_occlusion;
 uniform sampler2D u_occlusion_map;
 
-uniform sampler2D u_shadow_maps[MAX_LIGHTS];
+uniform sampler2DShadow u_shadow_maps[MAX_LIGHTS];
 uniform mat4 u_shadow_bias_matrices[MAX_LIGHTS];
 
 const vec2 poisson_disk[16] = vec2[](
@@ -73,15 +73,15 @@ vec3 transform_and_dehomogenize(in vec3 original) {
     return transformed.xyz / transformed.w;
 }
 
-bool shadow_pcf(in int i, in vec3 uvd) {
-    if (i == 0) return texture(u_shadow_maps[0], uvd.xy).r >= uvd.z;
-    else if (i == 1) return texture(u_shadow_maps[1], uvd.xy).r >= uvd.z;
-    else if (i == 2) return texture(u_shadow_maps[2], uvd.xy).r >= uvd.z;
-    else if (i == 3) return texture(u_shadow_maps[3], uvd.xy).r >= uvd.z;
-    else if (i == 4) return texture(u_shadow_maps[4], uvd.xy).r >= uvd.z;
-    else if (i == 5) return texture(u_shadow_maps[5], uvd.xy).r >= uvd.z;
-    else if (i == 6) return texture(u_shadow_maps[6], uvd.xy).r >= uvd.z;
-    else if (i == 7) return texture(u_shadow_maps[7], uvd.xy).r >= uvd.z;
+float shadow_pcf(in int i, in vec3 uvd) {
+    if (i == 0) return texture(u_shadow_maps[0], uvd);
+    else if (i == 1) return texture(u_shadow_maps[1], uvd);
+    else if (i == 2) return texture(u_shadow_maps[2], uvd);
+    else if (i == 3) return texture(u_shadow_maps[3], uvd);
+    else if (i == 4) return texture(u_shadow_maps[4], uvd);
+    else if (i == 5) return texture(u_shadow_maps[5], uvd);
+    else if (i == 6) return texture(u_shadow_maps[6], uvd);
+    else if (i == 7) return texture(u_shadow_maps[7], uvd);
 }
 
 void main() {
@@ -112,17 +112,14 @@ void main() {
         vec3 shadow_coord_clipspace = shadow_coord.xyz / shadow_coord.w;
         float visibility = 1.0;
 
-        if (0 <= shadow_coord_clipspace.x && shadow_coord_clipspace.x <= 1 &&
-            0 <= shadow_coord_clipspace.y && shadow_coord_clipspace.y <= 1) {
-            for (int sample_idx = 0; sample_idx < u_shadow_samples; ++sample_idx) {
-                int index = sample_idx;
+        for (int sample_idx = 0; sample_idx < u_shadow_samples; ++sample_idx) {
+            int index = sample_idx;
 
-                float sampled_shadow = float(shadow_pcf(i,
-                    vec3(shadow_coord_clipspace.xy + poisson_disk[index] / u_shadow_distance,
-                    (shadow_coord.z - bias) / shadow_coord.w)));
+            float sampled_shadow = float(shadow_pcf(i,
+                vec3(shadow_coord_clipspace.xy + poisson_disk[index] / u_shadow_distance,
+                (shadow_coord.z - bias) / shadow_coord.w)));
 
-                visibility -= visibility_per_sample * (1.0 - sampled_shadow);
-            }
+            visibility -= visibility_per_sample * (1.0 - sampled_shadow);
         }
 
         vec3 light_dir = normalize(transform_and_dehomogenize(lights[i].pos.xyz) - pos_dehomognized);
