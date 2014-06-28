@@ -771,7 +771,7 @@ class handler {
         ui.occlusion.sample_count_slider = new ui::slider<int>{vlayout};
         ui.occlusion.sample_count_slider->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.sample_count_slider);
-        ui.occlusion.sample_count_slider->set_min_max(1, 16, 16);
+        ui.occlusion.sample_count_slider->set_min_max(0, 16, 16);
 
         ui.occlusion.offset_slider = new ui::slider<float>{vlayout};
         ui.occlusion.offset_slider->set_size(150, 15);

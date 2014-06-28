@@ -36,6 +36,11 @@ const vec3 poisson_sphere[16] = vec3[](
 );
 
 void main() {
+    if (u_sample_count == 0) {
+        occlusion = 1.0;
+        return;
+    }
+
     vec3 random_normal = normalize(texture(u_noise_map, v_tex_coord * offset).rgb * 2.0 - 1.0);
 
     vec4 current_sample = texture(u_normal_depth_map, v_tex_coord);
