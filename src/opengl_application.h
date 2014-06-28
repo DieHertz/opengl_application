@@ -10,14 +10,18 @@ template<class Handler> class opengl_application {
     Handler handler;
 
 public:
-    opengl_application(const int ogl_ver_major, const int ogl_ver_minor,
-        const int width, const int height, const char* caption = "") {
+    opengl_application(
+        const int ogl_ver_major, const int ogl_ver_minor,
+        const int width, const int height, const int samples = 1,
+        const char* caption = ""
+    ) {
         if (!glfwInit()) throw std::runtime_error{"glfwInit() failed"};
 
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, ogl_ver_major);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, ogl_ver_minor);
+        glfwWindowHint(GLFW_SAMPLES, samples);
 
         p_window = glfwCreateWindow(width, height, caption, nullptr, nullptr);
         if (!p_window) throw std::runtime_error{"glfwCreateWindow() failed"};

@@ -96,15 +96,12 @@ class handler {
 
     GLuint lighting_program_id;
 
-    GLuint occlusion_fbo_id;
-    GLuint occlusion_renderbuffer_id;
-    GLuint occlusion_tex_id;
-    GLuint occlusion_blurred_tex_id;
-    GLuint noise_tex_id;
-
-    GLuint occlusion_program_id;
-    GLuint horizontal_blur_program_id;
-    GLuint vertical_blur_program_id;
+    struct {
+        GLuint fbo_id;
+        GLuint renderbuffer_id;
+        GLuint tex_id, blurred_tex_id, noise_tex_id;
+        GLuint program_id, hblur_program_id, vblur_program_id;
+    } occlusion;
 
     bool shadow_maps_require_update = true;
 
@@ -132,8 +129,8 @@ class handler {
             ui::slider<float>* offset_slider;
             ui::slider<float>* falloff_slider;
             ui::slider<float>* rad_slider;
-            ui::slider<float>* blur_size_x;
-            ui::slider<float>* blur_size_y;
+            ui::slider<float>* hblur_size;
+            ui::slider<float>* vblur_size;
         } occlusion;
         struct {
             ui::slider<int>* samples;
@@ -293,23 +290,23 @@ class handler {
     }
 
     void create_occlusion_fbo() {
-        glGenRenderbuffers(1, &occlusion_renderbuffer_id);
-        glBindRenderbuffer(GL_RENDERBUFFER, occlusion_renderbuffer_id);
+        glGenRenderbuffers(1, &occlusion.renderbuffer_id);
+        glBindRenderbuffer(GL_RENDERBUFFER, occlusion.renderbuffer_id);
         glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT,
             OCCLUSION_MAP_WIDTH, OCCLUSION_MAP_HEIGHT);
 
-        glGenTextures(1, &occlusion_tex_id);
-        glBindTexture(GL_TEXTURE_2D, occlusion_tex_id);
+        glGenTextures(1, &occlusion.tex_id);
+        glBindTexture(GL_TEXTURE_2D, occlusion.tex_id);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, OCCLUSION_MAP_WIDTH, OCCLUSION_MAP_HEIGHT,
             0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-        glGenFramebuffers(1, &occlusion_fbo_id);
-        glBindFramebuffer(GL_FRAMEBUFFER, occlusion_fbo_id);
+        glGenFramebuffers(1, &occlusion.fbo_id);
+        glBindFramebuffer(GL_FRAMEBUFFER, occlusion.fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, reflection.renderbuffer_id);
-        glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, occlusion_tex_id, 0);
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, occlusion.tex_id, 0);
 
         glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
@@ -378,12 +375,12 @@ class handler {
         const auto transf_block_index = glGetUniformBlockIndex(program_id, "transformations");
         glUniformBlockBinding(program_id, transf_block_index, transf_binding_point);
 
-        noise_tex_id = gl::load_png_texture("textures/noise.png");
+        occlusion.noise_tex_id = gl::load_png_texture("textures/noise.png");
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-        glGenTextures(1, &occlusion_blurred_tex_id);
-        glBindTexture(GL_TEXTURE_2D, occlusion_blurred_tex_id);
+        glGenTextures(1, &occlusion.blurred_tex_id);
+        glBindTexture(GL_TEXTURE_2D, occlusion.blurred_tex_id);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, OCCLUSION_MAP_WIDTH, OCCLUSION_MAP_HEIGHT,
             0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -393,15 +390,15 @@ class handler {
             { "shaders/occlusion_vertex.glsl", GL_VERTEX_SHADER },
             { "shaders/horizontal_blur_fragment.glsl", GL_FRAGMENT_SHADER },
         };
-        horizontal_blur_program_id = gl::load_shader_program(horizontal_blur_shaders);
-        gl::link_shader_program(horizontal_blur_program_id);
+        occlusion.hblur_program_id = gl::load_shader_program(horizontal_blur_shaders);
+        gl::link_shader_program(occlusion.hblur_program_id);
 
         const std::pair<const char*, GLenum> vertical_blur_shaders[] {
             { "shaders/occlusion_vertex.glsl", GL_VERTEX_SHADER },
             { "shaders/vertical_blur_fragment.glsl", GL_FRAGMENT_SHADER },
         };
-        vertical_blur_program_id = gl::load_shader_program(vertical_blur_shaders);
-        gl::link_shader_program(vertical_blur_program_id);
+        occlusion.vblur_program_id = gl::load_shader_program(vertical_blur_shaders);
+        gl::link_shader_program(occlusion.vblur_program_id);
 
         return program_id;
     }
@@ -522,7 +519,7 @@ class handler {
     }
 
     void occlusion_pass() {
-        glBindFramebuffer(GL_FRAMEBUFFER, occlusion_fbo_id);
+        glBindFramebuffer(GL_FRAMEBUFFER, occlusion.fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
 
         glClearColor(1, 1, 1, 1);
@@ -531,29 +528,29 @@ class handler {
         glViewport(0, 0, OCCLUSION_MAP_WIDTH, OCCLUSION_MAP_HEIGHT);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glUseProgram(occlusion_program_id);
+        glUseProgram(occlusion.program_id);
         scope_exit({
             glUseProgram(0);
             glActiveTexture(GL_TEXTURE0);
         });
 
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, noise_tex_id);
+        glBindTexture(GL_TEXTURE_2D, occlusion.noise_tex_id);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, normal_tex_id);
-        glUniform1i(glGetUniformLocation(occlusion_program_id, "u_noise_map"), 0);
-        glUniform1i(glGetUniformLocation(occlusion_program_id, "u_normal_depth_map"), 1);
-        glUniform1f(glGetUniformLocation(occlusion_program_id, "tot_strength"),
+        glUniform1i(glGetUniformLocation(occlusion.program_id, "u_noise_map"), 0);
+        glUniform1i(glGetUniformLocation(occlusion.program_id, "u_normal_depth_map"), 1);
+        glUniform1f(glGetUniformLocation(occlusion.program_id, "tot_strength"),
             ui.occlusion.tot_strength_slider->get_value());
-        glUniform1f(glGetUniformLocation(occlusion_program_id, "strength"),
+        glUniform1f(glGetUniformLocation(occlusion.program_id, "strength"),
             ui.occlusion.strength_slider->get_value());
-        glUniform1i(glGetUniformLocation(occlusion_program_id, "u_sample_count"),
+        glUniform1i(glGetUniformLocation(occlusion.program_id, "u_sample_count"),
             ui.occlusion.sample_count_slider->get_value());
-        glUniform1f(glGetUniformLocation(occlusion_program_id, "offset"),
+        glUniform1f(glGetUniformLocation(occlusion.program_id, "offset"),
             ui.occlusion.offset_slider->get_value());
-        glUniform1f(glGetUniformLocation(occlusion_program_id, "falloff"),
+        glUniform1f(glGetUniformLocation(occlusion.program_id, "falloff"),
             ui.occlusion.falloff_slider->get_value());
-        glUniform1f(glGetUniformLocation(occlusion_program_id, "rad"),
+        glUniform1f(glGetUniformLocation(occlusion.program_id, "rad"),
             ui.occlusion.rad_slider->get_value());
 
         glBindVertexArray(fullscreen_quad.vao_id);
@@ -561,7 +558,7 @@ class handler {
     }
 
     void blur_occlusion_pass() {
-        glBindFramebuffer(GL_FRAMEBUFFER, occlusion_fbo_id);
+        glBindFramebuffer(GL_FRAMEBUFFER, occlusion.fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
 
         glViewport(0, 0, OCCLUSION_MAP_WIDTH, OCCLUSION_MAP_HEIGHT);
@@ -570,23 +567,23 @@ class handler {
 
         glActiveTexture(GL_TEXTURE0);
 
-        glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, occlusion_blurred_tex_id, 0);
-        glBindTexture(GL_TEXTURE_2D, occlusion_tex_id);
-        glUseProgram(horizontal_blur_program_id);
-        glUniform1i(glGetUniformLocation(horizontal_blur_program_id, "u_sampler"), 0);
-        glUniform1f(glGetUniformLocation(horizontal_blur_program_id, "u_size"),
-            ui.occlusion.blur_size_x->get_value() / OCCLUSION_MAP_WIDTH
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, occlusion.blurred_tex_id, 0);
+        glBindTexture(GL_TEXTURE_2D, occlusion.tex_id);
+        glUseProgram(occlusion.hblur_program_id);
+        glUniform1i(glGetUniformLocation(occlusion.hblur_program_id, "u_sampler"), 0);
+        glUniform1f(glGetUniformLocation(occlusion.hblur_program_id, "u_size"),
+            ui.occlusion.hblur_size->get_value() / OCCLUSION_MAP_WIDTH
         );
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
-        glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, occlusion_tex_id, 0);
-        glBindTexture(GL_TEXTURE_2D, occlusion_blurred_tex_id);
-        glUseProgram(vertical_blur_program_id);
-        glUniform1i(glGetUniformLocation(vertical_blur_program_id, "u_sampler"), 0);
-        glUniform1f(glGetUniformLocation(vertical_blur_program_id, "u_size"),
-            ui.occlusion.blur_size_y->get_value() / OCCLUSION_MAP_HEIGHT
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, occlusion.tex_id, 0);
+        glBindTexture(GL_TEXTURE_2D, occlusion.blurred_tex_id);
+        glUseProgram(occlusion.vblur_program_id);
+        glUniform1i(glGetUniformLocation(occlusion.vblur_program_id, "u_sampler"), 0);
+        glUniform1f(glGetUniformLocation(occlusion.vblur_program_id, "u_size"),
+            ui.occlusion.vblur_size->get_value() / OCCLUSION_MAP_HEIGHT
         );
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -659,7 +656,7 @@ class handler {
             ui.shadow_maps.distance->get_value());
 
         glActiveTexture(GL_TEXTURE3);
-        glBindTexture(GL_TEXTURE_2D, occlusion_tex_id);
+        glBindTexture(GL_TEXTURE_2D, occlusion.tex_id);
 
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
@@ -791,15 +788,15 @@ class handler {
         vlayout->add_widget(ui.occlusion.rad_slider);
         ui.occlusion.rad_slider->set_min_max(0.001f, 0.01f, 0.001f);
 
-        ui.occlusion.blur_size_x = new ui::slider<float>{vlayout};
-        ui.occlusion.blur_size_x->set_size(150, 15);
-        vlayout->add_widget(ui.occlusion.blur_size_x);
-        ui.occlusion.blur_size_x->set_min_max(0.1f, 5.0f, 1.0f);
+        ui.occlusion.hblur_size = new ui::slider<float>{vlayout};
+        ui.occlusion.hblur_size->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.hblur_size);
+        ui.occlusion.hblur_size->set_min_max(0.1f, 5.0f, 1.0f);
 
-        ui.occlusion.blur_size_y = new ui::slider<float>{vlayout};
-        ui.occlusion.blur_size_y->set_size(150, 15);
-        vlayout->add_widget(ui.occlusion.blur_size_y);
-        ui.occlusion.blur_size_y->set_min_max(0.1f, 5.0f, 1.0f);
+        ui.occlusion.vblur_size = new ui::slider<float>{vlayout};
+        ui.occlusion.vblur_size->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.vblur_size);
+        ui.occlusion.vblur_size->set_min_max(0.1f, 5.0f, 1.0f);
 
         ui.shadow_maps.samples = new ui::slider<int>{vlayout};
         ui.shadow_maps.samples->set_size(150, 15);
@@ -849,7 +846,7 @@ public:
 
         depth_program_id = create_depth_shader();
         lighting_program_id = create_lighting_shader();
-        occlusion_program_id = create_occlusion_shader();
+        occlusion.program_id = create_occlusion_shader();
 
         create_transf_ubo();
         create_lights_ubo();
@@ -934,7 +931,7 @@ public:
         reflection_pass();
         lighting_pass();
 
-        // debug.draw(occlusion_tex_id, { 0, 0, framebuffer_size.x / 2, framebuffer_size.y / 2 });
+        // debug.draw(occlusion.tex_id, { 0, 0, framebuffer_size.x / 2, framebuffer_size.y / 2 });
         // debug.draw(normal_tex_id, { 3 * framebuffer_size.x / 4, 0, framebuffer_size.x / 4, framebuffer_size.y / 4 });
 
         draw_ui();
@@ -943,7 +940,7 @@ public:
 
 int main() {
     try {
-        opengl_application<handler> app{4, 1, 640, 480};
+        opengl_application<handler> app{4, 1, 640, 480, 4};
         app.run();
     } catch (std::exception& e) {
         std::cerr << "exception: " << e.what() << std::endl;
