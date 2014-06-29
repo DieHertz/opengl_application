@@ -10,11 +10,11 @@ uniform sampler2D u_noise_map;
 uniform sampler2D u_normal_depth_map;
 
 uniform int u_sample_count = 8;
-uniform float tot_strength = 1.38;
-uniform float strength = 0.07;
-uniform float offset = 18.0;
-uniform float falloff = 0.000002;
-uniform float rad = 0.006;
+uniform float u_total_strength = 1.38;
+uniform float u_strength = 0.07;
+uniform float u_offset = 18.0;
+uniform float u_falloff = 0.000002;
+uniform float u_radius = 0.006;
 
 const vec3 poisson_sphere[16] = vec3[](
     vec3(0.53812504, 0.18565957, -0.43192),
@@ -41,7 +41,7 @@ void main() {
         return;
     }
 
-    vec3 random_normal = normalize(texture(u_noise_map, v_tex_coord * offset).rgb * 2.0 - 1.0);
+    vec3 random_normal = normalize(texture(u_noise_map, v_tex_coord * u_offset).rgb * 2.0 - 1.0);
 
     vec4 current_sample = texture(u_normal_depth_map, v_tex_coord);
     float current_depth = current_sample.a;
@@ -50,10 +50,10 @@ void main() {
     vec3 current_normal = current_sample.rgb;
 
     float bl = 0.0;
-    float rad_d = rad / current_depth;
+    float radius_d = u_radius / current_depth;
 
     for (int i = 0; i < u_sample_count; ++i) {
-        vec3 ray = rad_d * reflect(poisson_sphere[i], random_normal);
+        vec3 ray = radius_d * reflect(poisson_sphere[i], random_normal);
 
         vec3 se = ep + sign(dot(ray, current_normal)) * ray;
 
@@ -63,9 +63,9 @@ void main() {
 
         float norm_diff = 1 - dot(occluder_sample.rgb, current_normal);
 
-        bl += step(falloff, depth_diff) * norm_diff * (1.0 - smoothstep(falloff, strength, depth_diff));
+        bl += step(u_falloff, depth_diff) * norm_diff * (1.0 - smoothstep(u_falloff, u_strength, depth_diff));
     }
 
-    float ao = 1.0 - tot_strength * bl / float(u_sample_count);
+    float ao = 1.0 - u_total_strength * bl / float(u_sample_count);
     occlusion = ao;
 }

@@ -13,7 +13,9 @@ namespace ui {
 class text : public widget {
 public:
     text(const std::string& str, const std::shared_ptr<font>& p_font, widget* parent = nullptr)
-    : widget{parent}, str{str}, p_font{p_font} {}
+    : widget{parent}, str{str}, p_font{p_font} {
+        update_buffers();
+    }
 
     void set_string(const std::string& str) {
         this->str = str;

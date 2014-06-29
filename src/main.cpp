@@ -61,6 +61,8 @@ class handler {
 
     struct stupid_visual_cpp_compiler_does_not_perform_inplace_initialization_of_members_of_anonymous_types {
         float fovy = 60.0f;
+        float near = 0.1f;
+        float far = 100.0f;
         glm::vec3 eye{-3, 1.5f, 1};
         glm::vec3 center{0, 0, 0};
         glm::vec3 up{0, 1, 0};
@@ -86,7 +88,7 @@ class handler {
 
     GLuint depth_fbo_id;
     GLuint depth_tex_id;
-    GLuint normal_tex_id;
+    GLuint normal_depth_tex_id;
     GLuint depth_program_id;
 
     struct {
@@ -125,12 +127,12 @@ class handler {
 
         std::unique_ptr<ui::widget> panel;
         struct {
-            ui::slider<float>* tot_strength_slider;
-            ui::slider<float>* strength_slider;
-            ui::slider<int>* sample_count_slider;
-            ui::slider<float>* offset_slider;
-            ui::slider<float>* falloff_slider;
-            ui::slider<float>* rad_slider;
+            ui::slider<float>* total_strength;
+            ui::slider<float>* strength;
+            ui::slider<int>* sample_count;
+            ui::slider<float>* offset;
+            ui::slider<float>* falloff;
+            ui::slider<float>* radius;
             ui::slider<float>* hblur_size;
             ui::slider<float>* vblur_size;
         } occlusion;
@@ -242,8 +244,8 @@ class handler {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        glGenTextures(1, &normal_tex_id);
-        glBindTexture(GL_TEXTURE_2D, normal_tex_id);
+        glGenTextures(1, &normal_depth_tex_id);
+        glBindTexture(GL_TEXTURE_2D, normal_depth_tex_id);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, SHADOW_MAP_WIDTH, SHADOW_MAP_HEIGHT,
             0, GL_RGBA, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -255,7 +257,7 @@ class handler {
         glBindFramebuffer(GL_FRAMEBUFFER, depth_fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
         glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depth_tex_id, 0);
-        glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, normal_tex_id, 0);
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, normal_depth_tex_id, 0);
 
         glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
@@ -509,6 +511,8 @@ class handler {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUniformMatrix4fv(depth_mvp_loc, 1, GL_FALSE, glm::value_ptr(transf.mvp_matrix));
+        glUniform1f(glGetUniformLocation(depth_program_id, "u_near"), camera.near);
+        glUniform1f(glGetUniformLocation(depth_program_id, "u_far"), camera.far);
 
         glBindVertexArray(plane.mesh.vao_id);
         glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
@@ -542,21 +546,21 @@ class handler {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, occlusion.noise_tex_id);
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, normal_tex_id);
+        glBindTexture(GL_TEXTURE_2D, normal_depth_tex_id);
         glUniform1i(glGetUniformLocation(occlusion.program_id, "u_noise_map"), 0);
         glUniform1i(glGetUniformLocation(occlusion.program_id, "u_normal_depth_map"), 1);
-        glUniform1f(glGetUniformLocation(occlusion.program_id, "tot_strength"),
-            ui.occlusion.tot_strength_slider->get_value());
-        glUniform1f(glGetUniformLocation(occlusion.program_id, "strength"),
-            ui.occlusion.strength_slider->get_value());
+        glUniform1f(glGetUniformLocation(occlusion.program_id, "u_total_strength"),
+            ui.occlusion.total_strength->get_value());
+        glUniform1f(glGetUniformLocation(occlusion.program_id, "u_strength"),
+            ui.occlusion.strength->get_value());
         glUniform1i(glGetUniformLocation(occlusion.program_id, "u_sample_count"),
-            ui.occlusion.sample_count_slider->get_value());
-        glUniform1f(glGetUniformLocation(occlusion.program_id, "offset"),
-            ui.occlusion.offset_slider->get_value());
-        glUniform1f(glGetUniformLocation(occlusion.program_id, "falloff"),
-            ui.occlusion.falloff_slider->get_value());
-        glUniform1f(glGetUniformLocation(occlusion.program_id, "rad"),
-            ui.occlusion.rad_slider->get_value());
+            ui.occlusion.sample_count->get_value());
+        glUniform1f(glGetUniformLocation(occlusion.program_id, "u_offset"),
+            ui.occlusion.offset->get_value());
+        glUniform1f(glGetUniformLocation(occlusion.program_id, "u_falloff"),
+            ui.occlusion.falloff->get_value());
+        glUniform1f(glGetUniformLocation(occlusion.program_id, "u_radius"),
+            ui.occlusion.radius->get_value());
 
         glBindVertexArray(fullscreen_quad.vao_id);
         glDrawArrays(GL_TRIANGLES, 0, 6); 
@@ -766,52 +770,56 @@ class handler {
         vlayout->set_pos(5, 0);
         vlayout->set_offset(5);
 
-        ui.occlusion.tot_strength_slider = new ui::slider<float>{"ssao.tot_strength", ui.p_font, vlayout};
-        ui.occlusion.tot_strength_slider->set_size(150, 15);
-        vlayout->add_widget(ui.occlusion.tot_strength_slider);
-        ui.occlusion.tot_strength_slider->set_min_max(0.1f, 10.0f, 1.5f);
+        vlayout->add_widget(new ui::text{"SSAO", ui.p_font, vlayout});
 
-        ui.occlusion.strength_slider = new ui::slider<float>{"ssao.strength", ui.p_font, vlayout};
-        ui.occlusion.strength_slider->set_size(150, 15);
-        vlayout->add_widget(ui.occlusion.strength_slider);
-        ui.occlusion.strength_slider->set_min_max(0.01f, 1.0f, 0.015f);
+        ui.occlusion.total_strength = new ui::slider<float>{"total_strength", ui.p_font, vlayout};
+        ui.occlusion.total_strength->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.total_strength);
+        ui.occlusion.total_strength->set_min_max(0.1f, 10.0f, 1.5f);
 
-        ui.occlusion.sample_count_slider = new ui::slider<int>{"ssao.sample_count", ui.p_font, vlayout};
-        ui.occlusion.sample_count_slider->set_size(150, 15);
-        vlayout->add_widget(ui.occlusion.sample_count_slider);
-        ui.occlusion.sample_count_slider->set_min_max(0, 16, 16);
+        ui.occlusion.strength = new ui::slider<float>{"strength", ui.p_font, vlayout};
+        ui.occlusion.strength->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.strength);
+        ui.occlusion.strength->set_min_max(0.01f, 1.0f, 0.015f);
 
-        ui.occlusion.offset_slider = new ui::slider<float>{"ssao.offset", ui.p_font, vlayout};
-        ui.occlusion.offset_slider->set_size(150, 15);
-        vlayout->add_widget(ui.occlusion.offset_slider);
-        ui.occlusion.offset_slider->set_min_max(1.0f, 30.0f, 30.0f);
+        ui.occlusion.sample_count = new ui::slider<int>{"sample_count", ui.p_font, vlayout};
+        ui.occlusion.sample_count->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.sample_count);
+        ui.occlusion.sample_count->set_min_max(0, 16, 16);
 
-        ui.occlusion.falloff_slider = new ui::slider<float>{"ssao.falloff", ui.p_font, vlayout};
-        ui.occlusion.falloff_slider->set_size(150, 15);
-        vlayout->add_widget(ui.occlusion.falloff_slider);
-        ui.occlusion.falloff_slider->set_min_max(0, 0.01f, 0.000002f);
+        ui.occlusion.offset = new ui::slider<float>{"offset", ui.p_font, vlayout};
+        ui.occlusion.offset->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.offset);
+        ui.occlusion.offset->set_min_max(1.0f, 30.0f, 30.0f);
 
-        ui.occlusion.rad_slider = new ui::slider<float>{"ssao.radius", ui.p_font, vlayout};
-        ui.occlusion.rad_slider->set_size(150, 15);
-        vlayout->add_widget(ui.occlusion.rad_slider);
-        ui.occlusion.rad_slider->set_min_max(0.001f, 0.01f, 0.001f);
+        ui.occlusion.falloff = new ui::slider<float>{"falloff", ui.p_font, vlayout};
+        ui.occlusion.falloff->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.falloff);
+        ui.occlusion.falloff->set_min_max(0, 0.01f, 0.000002f);
 
-        ui.occlusion.hblur_size = new ui::slider<float>{"ssao.hblur_size", ui.p_font, vlayout};
+        ui.occlusion.radius = new ui::slider<float>{"radius", ui.p_font, vlayout};
+        ui.occlusion.radius->set_size(150, 15);
+        vlayout->add_widget(ui.occlusion.radius);
+        ui.occlusion.radius->set_min_max(0.001f, 0.01f, 0.001f);
+
+        ui.occlusion.hblur_size = new ui::slider<float>{"hblur_size", ui.p_font, vlayout};
         ui.occlusion.hblur_size->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.hblur_size);
         ui.occlusion.hblur_size->set_min_max(0.1f, 2.0f, 1.0f);
 
-        ui.occlusion.vblur_size = new ui::slider<float>{"ssao.vblur_size", ui.p_font, vlayout};
+        ui.occlusion.vblur_size = new ui::slider<float>{"vblur_size", ui.p_font, vlayout};
         ui.occlusion.vblur_size->set_size(150, 15);
         vlayout->add_widget(ui.occlusion.vblur_size);
         ui.occlusion.vblur_size->set_min_max(0.1f, 2.0f, 1.0f);
 
-        ui.shadow_maps.samples = new ui::slider<int>{"sm.sample_count", ui.p_font, vlayout};
+        vlayout->add_widget(new ui::text{"Shadow maps", ui.p_font, vlayout});
+
+        ui.shadow_maps.samples = new ui::slider<int>{"sample_count", ui.p_font, vlayout};
         ui.shadow_maps.samples->set_size(150, 15);
         vlayout->add_widget(ui.shadow_maps.samples);
         ui.shadow_maps.samples->set_min_max(0, 16, 8);
 
-        ui.shadow_maps.distance = new ui::slider<float>{"sm.poisson_distance", ui.p_font, vlayout};
+        ui.shadow_maps.distance = new ui::slider<float>{"poisson_distance", ui.p_font, vlayout};
         ui.shadow_maps.distance->set_size(150, 15);
         vlayout->add_widget(ui.shadow_maps.distance);
         ui.shadow_maps.distance->set_min_max(100.0f, 1000.0f, 600.0f);
@@ -912,7 +920,7 @@ public:
         window_size = { window_width, window_height };
 
 		look_at(camera.eye, camera.center, camera.up);
-        perspective(camera.fovy, static_cast<float>(width) / height, 0.1f, 100.0f);
+        perspective(camera.fovy, static_cast<float>(width) / height, camera.near, camera.far);
         update_transf_ubo();
         update_ui_transform();
     }
@@ -940,7 +948,6 @@ public:
         lighting_pass();
 
         // debug.draw(occlusion.tex_id, { 0, 0, framebuffer_size.x / 2, framebuffer_size.y / 2 });
-        // debug.draw(normal_tex_id, { 3 * framebuffer_size.x / 4, 0, framebuffer_size.x / 4, framebuffer_size.y / 4 });
 
         draw_ui();
     }

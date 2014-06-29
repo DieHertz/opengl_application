@@ -15,10 +15,10 @@ layout(std140) uniform transformations {
 };
 
 uniform mat4 depth_mvp_matrix;
+uniform float u_near;
+uniform float u_far;
 
 float linearize_depth(in float non_linear_depth) {
-    const float u_near = 0.1;
-    const float u_far = 100;
     return 2 * u_near / (u_far + u_near - non_linear_depth * (u_far - u_near));
 }
 
