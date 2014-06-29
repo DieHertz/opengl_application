@@ -40,7 +40,6 @@ uniform samplerCube u_reflection_map;
 uniform sampler2D u_occlusion_map;
 uniform bool u_textured;
 
-
 uniform sampler2DShadow u_shadow_maps[MAX_LIGHTS];
 uniform mat4 u_shadow_bias_matrices[MAX_LIGHTS];
 

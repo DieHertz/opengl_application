@@ -111,6 +111,7 @@ class handler {
         GLuint tex_id;
     } reflection;
 
+    GLuint skybox_tex_id;
     GLuint lighting_program_id;
 
     bool shadow_maps_require_update = true;
@@ -288,8 +289,11 @@ class handler {
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
         for (auto face = 0; face < 6; ++face) {
-            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_RGB8, SPHERE_REFLECTION_MAP_WIDTH, SPHERE_REFLECTION_MAP_HEIGHT,
-                0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+            glTexImage2D(
+                GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_RGB8,
+                SPHERE_REFLECTION_MAP_WIDTH, SPHERE_REFLECTION_MAP_HEIGHT,
+                0, GL_RGB, GL_UNSIGNED_BYTE, nullptr
+            );
         }
 
         glGenFramebuffers(1, &reflection.fbo_id);
@@ -878,7 +882,7 @@ public:
         ball = create_ball();
         plane = create_plane();
         scene_model = {
-			mesh::load_mdl("models/ssao-test-scene.mdl"),
+            mesh::load_mdl("models/ssao-test-scene.mdl"),
             material{ { 0.707f, 0.707f, 0.707f, 1 }, { 0, 0, 0, 1 }, 0, 0 }
         };
         glGenBuffers(1, &scene_model.mtl_buffer_id);
@@ -896,13 +900,15 @@ public:
         create_shadow_maps_fbo();
 
         depth.program_id = create_depth_shader();
-        lighting_program_id = create_lighting_shader();
         ssao.program_id = create_ssao_shader();
         sm.program_id = create_sm_shader();
+        lighting_program_id = create_lighting_shader();
 
         create_transf_ubo();
         create_lights_ubo();
         create_shadow_maps();
+
+        skybox_tex_id = gl::load_png_texture_cube("textures/skybox");
 
         create_fullscreen_quad();
 
