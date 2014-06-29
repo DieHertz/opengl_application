@@ -148,6 +148,8 @@ class handler {
             ui::slider<int>* samples;
             ui::slider<float>* distance;
         } sm;
+
+        ui::text* fps;
     } ui;
 
     void look_at(const glm::vec3& eye, const glm::vec3& center, const glm::vec3& up) {
@@ -829,7 +831,7 @@ class handler {
         ui.ssao.depth_bias = new ui::slider<float>{"depth_bias", ui.p_font, vlayout};
         ui.ssao.depth_bias->set_size(150, 15);
         vlayout->add_widget(ui.ssao.depth_bias);
-        ui.ssao.depth_bias->set_min_max(0, 0.5f, 0.02f);
+        ui.ssao.depth_bias->set_min_max(0, 0.5f, 0.005f);
 
         ui.ssao.hblur_size = new ui::slider<float>{"hblur_size", ui.p_font, vlayout};
         ui.ssao.hblur_size->set_size(150, 15);
@@ -852,6 +854,9 @@ class handler {
         ui.sm.distance->set_size(150, 15);
         vlayout->add_widget(ui.sm.distance);
         ui.sm.distance->set_min_max(100.0f, 1000.0f, 600.0f);
+
+        ui.fps = new ui::text{"", ui.p_font, ui.panel.get()};
+        ui.fps->set_pos(600, 0);
     }
 
 public:
@@ -964,6 +969,8 @@ public:
         calculate_shadow_mvps();
 
         shadow_maps_require_update = true;
+
+        ui.fps->set_string(std::to_string(static_cast<int>(1.0f / elapsed)));
     }
 
     void onRender() {

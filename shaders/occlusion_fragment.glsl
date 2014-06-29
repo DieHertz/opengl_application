@@ -15,7 +15,7 @@ uniform float u_strength = 0.07;
 uniform float u_offset = 18.0;
 uniform float u_falloff = 0.000002;
 uniform float u_radius = 0.006;
-uniform float u_depth_bias = 0.02;
+uniform float u_depth_bias = 0.005;
 
 const vec3 poisson_sphere[16] = vec3[](
     vec3(0.53812504, 0.18565957, -0.43192),
