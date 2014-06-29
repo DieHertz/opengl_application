@@ -14,7 +14,6 @@ layout(std140) uniform transformations {
     mat3 normal_matrix;
 };
 
-uniform mat4 depth_mvp_matrix;
 uniform float u_near;
 uniform float u_far;
 
@@ -23,7 +22,7 @@ float linearize_depth(in float non_linear_depth) {
 }
 
 void main() {
-    gl_Position = depth_mvp_matrix * vec4(position_objectspace, 1);
+    gl_Position = mvp_matrix * vec4(position_objectspace, 1);
     v_normal_eyespace = normal_matrix * normal_objectspace;
     v_linear_depth = linearize_depth(gl_Position.z / gl_Position.w);
 }

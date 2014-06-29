@@ -37,10 +37,9 @@ layout(std140) uniform material {
 uniform sampler2D u_diffuse_map;
 uniform sampler2D u_normal_map;
 uniform samplerCube u_reflection_map;
+uniform sampler2D u_occlusion_map;
 uniform bool u_textured;
 
-uniform bool u_occlusion;
-uniform sampler2D u_occlusion_map;
 
 uniform sampler2DShadow u_shadow_maps[MAX_LIGHTS];
 uniform mat4 u_shadow_bias_matrices[MAX_LIGHTS];
@@ -98,12 +97,8 @@ void main() {
 
     vec4 color = diffuse * 0.3;
 
-    float occlusion = 1.0;
-    if (u_occlusion) {
-        vec4 tmp = mvp_matrix * vec4(v_position, 1);
-        vec2 tex_coord = tmp.xy / tmp.w * 0.5 + 0.5;
-        occlusion = texture(u_occlusion_map, tex_coord).r;
-    }
+    vec4 tmp = mvp_matrix * vec4(v_position, 1);
+    float occlusion = texture(u_occlusion_map, tmp.xy / tmp.w * 0.5 + 0.5).r;
 
     float visibility_per_sample = 0.8 / u_shadow_samples;
 

@@ -15,6 +15,7 @@ uniform float u_strength = 0.07;
 uniform float u_offset = 18.0;
 uniform float u_falloff = 0.000002;
 uniform float u_radius = 0.006;
+uniform float u_depth_bias = 0.02;
 
 const vec3 poisson_sphere[16] = vec3[](
     vec3(0.53812504, 0.18565957, -0.43192),
@@ -60,6 +61,7 @@ void main() {
         vec4 occluder_sample = texture(u_normal_depth_map, se.xy);
 
         float depth_diff = current_depth - occluder_sample.a;
+        if (depth_diff > u_depth_bias) continue;
 
         float norm_diff = 1 - dot(occluder_sample.rgb, current_normal);
 
