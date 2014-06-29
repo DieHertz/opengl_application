@@ -105,6 +105,7 @@ private:
         };
 
         dragging = point_in_bbox(x, y);
+        if (dragging) cursor_at(x, y);
 
         return dragging;
     }
@@ -122,11 +123,17 @@ private:
     virtual bool process_mouse_move(const float x, const float y) override {
         if (!dragging) return false;
 
+        cursor_at(x, y);
+
+        return true;
+    }
+
+    void cursor_at(const float x, const float y) {
         const auto pos_offset = x - (pos.x + offset + size.h / 2);
         const auto effective_width = size.w - size.h - 2 * offset;
 
         percentage = std::max(std::min(pos_offset / effective_width, 1.0f), 0.0f);
-		const auto val = static_cast<T>(min + (max - min) * percentage);
+        const auto val = static_cast<T>(min + (max - min) * percentage);
 
         update_required = true;
         if (this->val != val) {
@@ -134,8 +141,6 @@ private:
             value_text->set_string(" : " + std::to_string(val));
             if (on_change_callback) on_change_callback(val);
         }
-
-        return true;
     }
 };
 
