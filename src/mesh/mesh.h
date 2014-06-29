@@ -11,7 +11,7 @@ struct mesh_data {
     size_t num_indices;
     GLenum index_type;
     GLuint vao_id;
-    GLuint vbo_ids[4];
+    GLuint vbo_ids[6];
 };
 
 mesh_data gen_sphere(float radius, int rings, int sectors);

@@ -5,6 +5,8 @@ precision mediump float;
 in vec3 v_position;
 in vec3 v_normal;
 in vec2 v_tex_coord;
+in vec3 v_tangent;
+in vec3 v_bitangent;
 
 layout(location = 0) out vec4 frag_color;
 
@@ -34,11 +36,13 @@ layout(std140) uniform material {
     float reflectance;
 } mtl;
 
+uniform bool u_diffuse_textured = false;
+uniform bool u_normal_textured = false;
+
 uniform sampler2D u_diffuse_map;
 uniform sampler2D u_normal_map;
-uniform samplerCube u_reflection_map;
 uniform sampler2D u_occlusion_map;
-uniform bool u_textured;
+uniform samplerCube u_reflection_map;
 
 uniform sampler2DShadow u_shadow_maps[MAX_LIGHTS];
 uniform mat4 u_shadow_bias_matrices[MAX_LIGHTS];
@@ -85,14 +89,22 @@ float shadow_pcf(in int i, in vec3 uvd) {
 void main() {
     const vec3 eye_position = vec3(0, 0, 0);
 
-    vec4 diffuse = mtl.diffuse + (u_textured ? texture(u_diffuse_map, vec2(1.0, 1.0) - v_tex_coord) : vec4(0));
+    vec4 diffuse = mtl.diffuse + (u_diffuse_textured ? texture(u_diffuse_map, vec2(1.0, 1.0) - v_tex_coord) : vec4(0));
     if (mtl.reflectance > 0) {
         diffuse = (1 - mtl.reflectance) * diffuse + mtl.reflectance * texture(u_reflection_map, v_normal);
     }
     vec4 ambient = vec4(0.1, 0.1, 0.1, 1.0);
     vec3 pos_dehomognized = transform_and_dehomogenize(v_position);
     vec3 eye_dir = normalize(eye_position - pos_dehomognized);
-    vec3 normal = normalize(normal_matrix * v_normal);
+    vec3 normal;
+
+    if (u_normal_textured) {
+        mat3 tbn_matrix = mat3(v_tangent, v_bitangent, v_normal);
+        vec3 normal_tangentspace = texture(u_normal_map, v_tex_coord).rgb * 2.0 - 1.0;
+        normal = normalize(normal_matrix * tbn_matrix * normal_tangentspace);
+    } else {
+        normal = normal_matrix * v_normal;
+    }
 
     vec4 color = diffuse * 0.3;
 

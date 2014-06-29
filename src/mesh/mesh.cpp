@@ -83,7 +83,9 @@ mesh_data gen_quad(const glm::vec3 v1, const glm::vec3 v2, const glm::vec3 v3, c
         glm::normalize(glm::cross(v3 - v4, v3 - v2)),
         glm::normalize(glm::cross(v4 - v1, v4 - v3))
     };
-    const glm::vec2 tex_coords[] { { 0, 0 }, { 4, 0 }, { 4, 4 }, { 0, 4 } };
+    const glm::vec2 tex_coords[] { { 0, 0 }, { 5, 0 }, { 5, 5 }, { 0, 5 } };
+    const glm::vec3 tangent[] { { 1, 0, 0 }, { 1, 0, 0 }, { 1, 0, 0 }, { 1, 0, 0 } };
+    const glm::vec3 bitangent[] { { 0, 0, 1 }, { 0, 0, 1 }, { 0, 0, 1 }, { 0, 0, 1 } };
     const GLushort indices[] { 0, 1, 2, 0, 2, 3 };
 
     auto mesh = mesh_data{GL_TRIANGLES, array_length(indices), GL_UNSIGNED_SHORT};
@@ -110,6 +112,16 @@ mesh_data gen_quad(const glm::vec3 v1, const glm::vec3 v2, const glm::vec3 v3, c
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.vbo_ids[3]);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo_ids[4]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(tangent), tangent, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(tangent[0]), 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo_ids[5]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(bitangent), bitangent, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(bitangent[0]), 0);
 
     return mesh;
 }

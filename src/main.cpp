@@ -655,6 +655,9 @@ class handler {
             { { 0, 0, -1 }, { 0, -1, 0 } },
         };
 
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, ssao.tex_id);
+
         for (auto face = 0; face < 6; ++face) {
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
                 reflection.tex_id, 0);
@@ -667,7 +670,9 @@ class handler {
 
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
-            glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), true);
+            glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion_map"), 2);
+            glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_textured"), true);
+            glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_textured"), plane.normal_tex_id != 0);
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion"), false);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, plane.diffuse_tex_id);
@@ -694,15 +699,16 @@ class handler {
         glUniform1f(glGetUniformLocation(lighting_program_id, "u_shadow_distance"),
             ui.sm.distance->get_value());
 
-        glActiveTexture(GL_TEXTURE3);
+        glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, ssao.tex_id);
 
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion_map"), 3);
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion_map"), 2);
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion"), true);
 
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), true);
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_textured"), true);
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_textured"), plane.normal_tex_id != 0);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, plane.diffuse_tex_id);
         glActiveTexture(GL_TEXTURE1);
@@ -711,17 +717,18 @@ class handler {
         glBindVertexArray(plane.mesh.vao_id);
         glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
 
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), true);
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_reflection_map"), 2);
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_textured"), true);
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_textured"), ball.normal_tex_id != 0);
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_reflection_map"), 3);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, ball.diffuse_tex_id);
-        glActiveTexture(GL_TEXTURE2);
+        glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_CUBE_MAP, reflection.tex_id);
         glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, ball.mtl_buffer_id);
         glBindVertexArray(ball.mesh.vao_id);
         glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
 
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_textured"), false);
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_textured"), false);
         glBindVertexArray(scene_model.mesh.vao_id);
         glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, scene_model.mtl_buffer_id);
         glDrawElements(scene_model.mesh.primitive_mode, scene_model.mesh.num_indices, scene_model.mesh.index_type, nullptr);
@@ -881,13 +888,13 @@ public:
 
         ball = create_ball();
         plane = create_plane();
-        scene_model = {
-            mesh::load_mdl("models/ssao-test-scene.mdl"),
-            material{ { 0.707f, 0.707f, 0.707f, 1 }, { 0, 0, 0, 1 }, 0, 0 }
-        };
-        glGenBuffers(1, &scene_model.mtl_buffer_id);
-        glBindBuffer(GL_UNIFORM_BUFFER, scene_model.mtl_buffer_id);
-        glBufferData(GL_UNIFORM_BUFFER, sizeof(scene_model.mtl), &scene_model.mtl, GL_DYNAMIC_DRAW);
+        // scene_model = {
+        //     mesh::load_mdl("models/ssao-test-scene.mdl"),
+        //     material{ { 0.707f, 0.707f, 0.707f, 1 }, { 0, 0, 0, 1 }, 0, 0 }
+        // };
+        // glGenBuffers(1, &scene_model.mtl_buffer_id);
+        // glBindBuffer(GL_UNIFORM_BUFFER, scene_model.mtl_buffer_id);
+        // glBufferData(GL_UNIFORM_BUFFER, sizeof(scene_model.mtl), &scene_model.mtl, GL_DYNAMIC_DRAW);
 
         lights = {
             { { 20, 30, 10, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
