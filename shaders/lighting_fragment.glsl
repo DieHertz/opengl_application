@@ -47,8 +47,8 @@ uniform sampler2D u_occlusion_map;
 uniform samplerCube u_reflection_map;
 
 uniform vec3 u_camera_pos_worldspace;
-uniform float u_parallax_scale;
-uniform float u_parallax_bias;
+uniform float u_parallax_scale = 0.005;
+uniform float u_parallax_bias = 0.0;
 
 uniform int u_shadow_samples = 8;
 uniform float u_shadow_distance = 600.0;

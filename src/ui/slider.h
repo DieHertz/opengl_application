@@ -32,6 +32,8 @@ public:
         percentage = calc_percentage();
 
         update_required = true;
+
+        notify();
     }
 
     void set_min_max(const T min, const T max) {
@@ -52,6 +54,10 @@ private:
     ui::text* label;
     ui::text* value_text;
     std::function<void(T)> on_change_callback;
+
+    void notify() {
+        if (on_change_callback) on_change_callback(val);
+    }
 
     float calc_percentage() const {
         return static_cast<float>(val - min) / (max - min);
@@ -139,7 +145,7 @@ private:
         if (this->val != val) {
             this->val = val;
             value_text->set_string(" : " + std::to_string(val));
-            if (on_change_callback) on_change_callback(val);
+            notify();
         }
     }
 };

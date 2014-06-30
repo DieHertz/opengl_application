@@ -9,12 +9,12 @@ layout(location = 0) out float occlusion;
 uniform sampler2D u_noise_map;
 uniform sampler2D u_normal_depth_map;
 
-uniform int u_sample_count = 8;
-uniform float u_total_strength = 1.38;
-uniform float u_strength = 0.07;
-uniform float u_offset = 18.0;
+uniform int u_sample_count = 16;
+uniform float u_total_strength = 1.5;
+uniform float u_strength = 0.15;
+uniform float u_offset = 30.0;
 uniform float u_falloff = 0.000002;
-uniform float u_radius = 0.006;
+uniform float u_radius = 0.001;
 uniform float u_depth_bias = 0.005;
 
 const vec3 poisson_sphere[16] = vec3[](
