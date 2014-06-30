@@ -36,7 +36,7 @@ struct transformations {
 };
 
 class handler {
-    scene scene;
+    struct scene scene;
 
     struct stupid_visual_cpp_compiler_does_not_perform_inplace_initialization_of_members_of_anonymous_types {
         float fovy = 60.0f;
