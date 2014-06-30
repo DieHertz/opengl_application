@@ -1,6 +1,8 @@
 #ifndef scope_exit_h
 #define scope_exit_h
 
+#include <utility>
+
 template<class Function> class __scope_exit {
     Function f;
 
