@@ -1,12 +1,12 @@
-#include "ui/slider.h"
-#include "ui/vertical_layout.h"
-#include "ui/text.h"
+#include "scene.h"
 #include "opengl_application.h"
 #include "debug_surface.h"
-#include "mesh/mesh.h"
 #include "gl/util.h"
 #include "ext.h"
 #include "scope_exit.h"
+#include "ui/slider.h"
+#include "ui/vertical_layout.h"
+#include "ui/text.h"
 #define GLM_FORCE_RADIANS
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -22,27 +22,6 @@ const auto SSAO_MAP_HEIGHT = 480;
 const auto SPHERE_REFLECTION_MAP_WIDTH = 256;
 const auto SPHERE_REFLECTION_MAP_HEIGHT = 256;
 
-struct material {
-    glm::vec4 diffuse;
-    glm::vec4 specular;
-    float shininess;
-    float reflectance;
-};
-
-struct scene_object {
-    mesh::mesh_data mesh;
-    material mtl;
-    GLuint mtl_buffer_id;
-    GLuint diffuse_tex_id;
-    GLuint normal_tex_id;
-    GLuint height_tex_id;
-};
-
-struct light {
-    glm::vec4 pos;
-    glm::vec4 color;
-};
-
 struct transformations {
     glm::mat4 depth_bias_matrix;
     glm::mat4 mv_matrix;
@@ -52,11 +31,7 @@ struct transformations {
 };
 
 class handler {
-    scene_object ball;
-    scene_object plane;
-    mesh::mesh_data skybox;
-
-    std::vector<light> lights;
+    scene scene;
 
     struct stupid_visual_cpp_compiler_does_not_perform_inplace_initialization_of_members_of_anonymous_types {
         float fovy = 60.0f;
@@ -112,11 +87,6 @@ class handler {
         GLuint tex_id;
     } reflection;
 
-    GLuint skybox_tex_id;
-	GLuint skybox_program_id;
-
-    GLuint lighting_program_id;
-
     bool shadow_maps_require_update = true;
 
     bool camera_dragging = false;
@@ -156,9 +126,6 @@ class handler {
             ui::slider<float>* scale;
             ui::slider<float>* bias;
         } parallax;
-        struct {
-            ui::slider<float>* reflectance;
-        } ball;
 
         ui::text* fps;
     } ui;
@@ -205,30 +172,30 @@ class handler {
         glGenBuffers(1, &lights_buffer_id);
         glBindBufferBase(GL_UNIFORM_BUFFER, lights_binding_point, lights_buffer_id);
 
-        const auto num_lights_offset = MAX_LIGHTS * sizeof(lights.front());
-        const auto num_lights = GLint(lights.size());
+        const auto num_lights_offset = MAX_LIGHTS * sizeof(scene.lights.front());
+        const auto num_lights = GLint(scene.lights.size());
         glBufferData(GL_UNIFORM_BUFFER, sizeof(num_lights) + num_lights_offset, nullptr, GL_DYNAMIC_DRAW);
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, lights.size() * sizeof(lights.front()), lights.data());
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, scene.lights.size() * sizeof(scene.lights.front()), scene.lights.data());
         glBufferSubData(GL_UNIFORM_BUFFER, num_lights_offset, sizeof(num_lights), &num_lights);
     }
 
     void update_lights_ubo() {
         glBindBuffer(GL_UNIFORM_BUFFER, lights_buffer_id);
 
-        const auto num_lights_offset = MAX_LIGHTS * sizeof(lights.front());
-        const auto num_lights = GLint(lights.size());
-        glBufferSubData(GL_UNIFORM_BUFFER, 0, lights.size() * sizeof(lights.front()), lights.data());
+        const auto num_lights_offset = MAX_LIGHTS * sizeof(scene.lights.front());
+        const auto num_lights = GLint(scene.lights.size());
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, scene.lights.size() * sizeof(scene.lights.front()), scene.lights.data());
         glBufferSubData(GL_UNIFORM_BUFFER, num_lights_offset, sizeof(num_lights), &num_lights);
     }
 
     void create_shadow_maps() {
-        sm.tex_ids = std::vector<GLuint>(lights.size());
-        glGenTextures(lights.size(), &sm.tex_ids[0]);
+        sm.tex_ids = std::vector<GLuint>(scene.lights.size());
+        glGenTextures(scene.lights.size(), &sm.tex_ids[0]);
 
         scope_exit({ glActiveTexture(GL_TEXTURE0); });
 
         GLfloat border_color[] { 1.0f, 0, 0, 0 };
-        for (size_t i = 0; i < lights.size(); ++i) {
+        for (size_t i = 0; i < scene.lights.size(); ++i) {
             glActiveTexture(FIRST_SM_TIU + i);
             glBindTexture(GL_TEXTURE_2D, sm.tex_ids[i]);
 
@@ -249,7 +216,7 @@ class handler {
         sm.mvp_matrices = {};
 
         const auto aspect_ratio = static_cast<float>(SM_WIDTH) / SM_HEIGHT;
-        std::transform(std::begin(lights), std::end(lights), std::back_inserter(sm.mvp_matrices),
+        std::transform(std::begin(scene.lights), std::end(scene.lights), std::back_inserter(sm.mvp_matrices),
             [=] (const light& l) {
                 return glm::perspective(glm::radians(45.0f), aspect_ratio, 1.0f, 100.0f) *
                     glm::lookAt(glm::vec3(l.pos), camera.center, camera.up);
@@ -521,13 +488,13 @@ class handler {
     }
 
     void update_shadow_bias_matrices() {
-        glUseProgram(lighting_program_id);
+        glUseProgram(scene.lighting_program_id);
 
-        for (size_t i = 0; i < lights.size(); ++i) {
+        for (size_t i = 0; i < scene.lights.size(); ++i) {
             const auto shadow_bias_matrix = depth_bias_matrix * sm.mvp_matrices[i];
 
             const auto uname = "u_shadow_bias_matrices[" + std::to_string(i) + ']';
-            const auto uloc = glGetUniformLocation(lighting_program_id, uname.data());
+            const auto uloc = glGetUniformLocation(scene.lighting_program_id, uname.data());
 
             glUniformMatrix4fv(uloc, 1, GL_FALSE, glm::value_ptr(shadow_bias_matrix));
         }
@@ -547,17 +514,16 @@ class handler {
 
         const auto depth_mvp_loc = glGetUniformLocation(sm.program_id, "depth_mvp_matrix");
 
-        for (size_t i = 0; i < lights.size(); ++i) {
+        for (size_t i = 0; i < scene.lights.size(); ++i) {
             glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, sm.tex_ids[i], 0);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             glUniformMatrix4fv(depth_mvp_loc, 1, GL_FALSE, glm::value_ptr(sm.mvp_matrices[i]));
 
-            glBindVertexArray(plane.mesh.vao_id);
-            glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
-
-            glBindVertexArray(ball.mesh.vao_id);
-            glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
+            for (auto& obj : scene.objs) {
+                glBindVertexArray(obj.mesh.vao_id);
+                glDrawElements(obj.mesh.primitive_mode, obj.mesh.num_indices, obj.mesh.index_type, nullptr);
+            }
         }
     }
 
@@ -574,11 +540,10 @@ class handler {
         glUniform1f(glGetUniformLocation(depth.program_id, "u_near"), camera.near);
         glUniform1f(glGetUniformLocation(depth.program_id, "u_far"), camera.far);
 
-        glBindVertexArray(plane.mesh.vao_id);
-        glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
-
-        glBindVertexArray(ball.mesh.vao_id);
-        glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
+        for (auto& obj : scene.objs) {
+            glBindVertexArray(obj.mesh.vao_id);
+            glDrawElements(obj.mesh.primitive_mode, obj.mesh.num_indices, obj.mesh.index_type, nullptr);
+        }
 
         transf.depth_bias_matrix = depth_bias_matrix * transf.mvp_matrix;
         update_transf_ubo();
@@ -662,10 +627,10 @@ class handler {
         glBindFramebuffer(GL_FRAMEBUFFER, reflection.fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
 
-        glUseProgram(lighting_program_id);
+        glUseProgram(scene.lighting_program_id);
         scope_exit({ glUseProgram(0); });
 
-        glUniform4fv(glGetUniformLocation(lighting_program_id, "u_camera_pos_worldspace"), 1,
+        glUniform4fv(glGetUniformLocation(scene.lighting_program_id, "u_camera_pos_worldspace"), 1,
             glm::value_ptr(camera.center));
 
         const auto old_transf = transf;
@@ -689,6 +654,8 @@ class handler {
 
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, ssao.tex_id);
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 
         for (auto face = 0; face < 6; ++face) {
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
@@ -701,24 +668,26 @@ class handler {
             update_transf_ubo();
 
             render_skybox();
-            glUseProgram(lighting_program_id);
+            glUseProgram(scene.lighting_program_id);
 
-            glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
-            glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
-            glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion_map"), 2);
-            glUniform1i(glGetUniformLocation(lighting_program_id, "u_height_map"), 4);
-            glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_textured"), true);
-            glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_textured"), plane.normal_tex_id != 0);
-            glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion"), false);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, plane.diffuse_tex_id);
-            glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, plane.normal_tex_id);
-            glActiveTexture(GL_TEXTURE4);
-            glBindTexture(GL_TEXTURE_2D, plane.height_tex_id);
-            glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, plane.mtl_buffer_id);
-            glBindVertexArray(plane.mesh.vao_id);
-            glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
+            for (auto& obj : scene.objs) {
+                glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_diffuse_map"), 0);
+                glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_normal_map"), 1 );
+                glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_occlusion_map"), 2);
+                glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_height_map"), 4);
+                glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_diffuse_textured"), obj.diffuse_tex_id != 0);
+                glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_normal_textured"), obj.normal_tex_id != 0);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, obj.diffuse_tex_id);
+                glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_2D, obj.normal_tex_id);
+                glActiveTexture(GL_TEXTURE4);
+                glBindTexture(GL_TEXTURE_2D, obj.height_tex_id);
+
+                glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, obj.mtl_buffer_id);
+                glBindVertexArray(obj.mesh.vao_id);
+                glDrawElements(obj.mesh.primitive_mode, obj.mesh.num_indices, obj.mesh.index_type, nullptr);
+            }
         }
     }
 
@@ -728,59 +697,53 @@ class handler {
 
         render_skybox();
 
-        glUseProgram(lighting_program_id);
+        glUseProgram(scene.lighting_program_id);
         scope_exit({
             glUseProgram(0);
             glActiveTexture(GL_TEXTURE0);
         });
 
-        glUniform4fv(glGetUniformLocation(lighting_program_id, "u_camera_pos_worldspace"), 1,
+        glUniform4fv(glGetUniformLocation(scene.lighting_program_id, "u_camera_pos_worldspace"), 1,
             glm::value_ptr(camera.eye));
 
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_shadow_samples"),
+        glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_shadow_samples"),
             ui.sm.samples->get_value());
-        glUniform1f(glGetUniformLocation(lighting_program_id, "u_shadow_distance"),
+        glUniform1f(glGetUniformLocation(scene.lighting_program_id, "u_shadow_distance"),
             ui.sm.distance->get_value());
 
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, ssao.tex_id);
-
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion_map"), 2);
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_reflection_map"), 3);
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_height_map"), 4);
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion"), true);
-
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_textured"), true);
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_textured"), plane.normal_tex_id != 0);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, plane.diffuse_tex_id);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, plane.normal_tex_id);
-        glActiveTexture(GL_TEXTURE4);
-        glBindTexture(GL_TEXTURE_2D, plane.height_tex_id);
-        glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, plane.mtl_buffer_id);
-        glBindVertexArray(plane.mesh.vao_id);
-        glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
-
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_textured"), true);
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_textured"), ball.normal_tex_id != 0);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, ball.diffuse_tex_id);
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_CUBE_MAP, reflection.tex_id);
-        glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, ball.mtl_buffer_id);
-        glBindVertexArray(ball.mesh.vao_id);
-        glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
+
+        glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_diffuse_map"), 0);
+        glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_normal_map"), 1 );
+        glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_occlusion_map"), 2);
+        glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_reflection_map"), 3);
+        glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_height_map"), 4);
+        glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_occlusion"), true);
+
+        for (auto obj : scene.objs) {
+            glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_diffuse_textured"), obj.diffuse_tex_id != 0);
+            glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_normal_textured"), obj.normal_tex_id != 0);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, obj.diffuse_tex_id);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, obj.normal_tex_id);
+            glActiveTexture(GL_TEXTURE4);
+            glBindTexture(GL_TEXTURE_2D, obj.height_tex_id);
+            glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, obj.mtl_buffer_id);
+            glBindVertexArray(obj.mesh.vao_id);
+            glDrawElements(obj.mesh.primitive_mode, obj.mesh.num_indices, obj.mesh.index_type, nullptr);
+        }
     }
 
     void render_skybox() {
-        glUseProgram(skybox_program_id);
-        glUniform1i(glGetUniformLocation(skybox_program_id, "u_skybox_map"), 0);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, skybox_tex_id);
-        glBindVertexArray(skybox.vao_id);
-        glDrawElements(skybox.primitive_mode, skybox.num_indices, skybox.index_type, nullptr);
+        glUseProgram(scene.skybox_program_id);
+        glUniform1i(glGetUniformLocation(scene.skybox_program_id, "u_skybox_map"), 0);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, scene.skybox_tex_id);
+        glBindVertexArray(scene.skybox.vao_id);
+        glDrawElements(scene.skybox.primitive_mode, scene.skybox.num_indices, scene.skybox.index_type, nullptr);
     }
 
     GLuint create_ui_shader() {
@@ -922,8 +885,8 @@ class handler {
         vlayout->add_widget(ui.parallax.scale);
         ui.parallax.scale->set_min_max(0, 0.1f, 0.005f);
         ui.parallax.scale->on_change([this] (const float scale) {
-            glUseProgram(lighting_program_id);
-            glUniform1f(glGetUniformLocation(lighting_program_id, "u_parallax_scale"), scale);
+            glUseProgram(scene.lighting_program_id);
+            glUniform1f(glGetUniformLocation(scene.lighting_program_id, "u_parallax_scale"), scale);
             glUseProgram(0);
         });
 
@@ -932,22 +895,9 @@ class handler {
         vlayout->add_widget(ui.parallax.bias);
         ui.parallax.bias->set_min_max(0, 0.1f, 0);
         ui.parallax.bias->on_change([this] (const float bias) {
-            glUseProgram(lighting_program_id);
-            glUniform1f(glGetUniformLocation(lighting_program_id, "u_parallax_bias"), bias);
+            glUseProgram(scene.lighting_program_id);
+            glUniform1f(glGetUniformLocation(scene.lighting_program_id, "u_parallax_bias"), bias);
             glUseProgram(0);
-        });
-
-        vlayout->add_widget(new ui::text{"ball", ui.p_font, vlayout});
-
-        ui.ball.reflectance = new ui::slider<float>{"reflectance", ui.p_font, vlayout};
-        ui.ball.reflectance->set_size(150, 15);
-        vlayout->add_widget(ui.ball.reflectance);
-        ui.ball.reflectance->set_min_max(0, 1.0f, 0.07f);
-        ui.ball.reflectance->on_change([this] (const float reflectance) {
-            ball.mtl.reflectance = reflectance;
-            glBindBuffer(GL_UNIFORM_BUFFER, ball.mtl_buffer_id);
-            glBufferData(GL_UNIFORM_BUFFER, sizeof(ball.mtl), &ball.mtl, GL_DYNAMIC_DRAW);
-            glBindBuffer(GL_UNIFORM_BUFFER, 0);
         });
 
         ui.fps = new ui::text{"", ui.p_font, ui.panel.get()};
@@ -970,13 +920,15 @@ public:
 
         debug.init();
 
-        ball = create_ball();
-        plane = create_plane();
-        skybox = mesh::gen_skybox();
-        skybox_tex_id = gl::load_png_texture_cube("textures/skybox");
-        skybox_program_id = create_skybox_shader();
+        scene.objs.reserve(2);
+        scene.objs.push_back(create_ball());
+        scene.objs.push_back(create_plane());
 
-        lights = {
+        scene.skybox = mesh::gen_skybox();
+        scene.skybox_tex_id = gl::load_png_texture_cube("textures/skybox");
+        scene.skybox_program_id = create_skybox_shader();
+
+        scene.lights = {
             { { 20, 15, 10, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
             { { 20, 20, -15, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
         };
@@ -989,7 +941,7 @@ public:
         depth.program_id = create_depth_shader();
         ssao.program_id = create_ssao_shader();
         sm.program_id = create_sm_shader();
-        lighting_program_id = create_lighting_shader();
+        scene.lighting_program_id = create_lighting_shader();
 
         create_transf_ubo();
         create_lights_ubo();
@@ -1054,8 +1006,8 @@ public:
     }
 
     void onUpdate(const float now, const float elapsed) {
-        lights[0].pos.x = 20 * std::cos(0.25f * now);
-        lights[0].pos.z = 10 * std::sin(0.25f * now);
+        scene.lights[0].pos.x = 20 * std::cos(0.25f * now);
+        scene.lights[0].pos.z = 10 * std::sin(0.25f * now);
 
         update_lights_ubo();
         calculate_shadow_mvps();

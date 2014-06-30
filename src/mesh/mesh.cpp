@@ -52,7 +52,7 @@ mesh_data gen_sphere(const float radius, const int rings, const int sectors) {
     glGenVertexArrays(1, &mesh.vao_id);
     glBindVertexArray(mesh.vao_id);
 
-    glGenBuffers(array_length(mesh.vbo_ids), mesh.vbo_ids);
+    glGenBuffers(4, mesh.vbo_ids);
 
     glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo_ids[0]);
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vertices.front()), vertices.data(), GL_STATIC_DRAW);
@@ -110,18 +110,18 @@ mesh_data gen_quad(const glm::vec3 v1, const glm::vec3 v2, const glm::vec3 v3, c
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(tex_coords[0]), 0);
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.vbo_ids[3]);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo_ids[4]);
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo_ids[3]);
     glBufferData(GL_ARRAY_BUFFER, sizeof(tangent), tangent, GL_STATIC_DRAW);
     glEnableVertexAttribArray(3);
     glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(tangent[0]), 0);
 
-    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo_ids[5]);
+    glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo_ids[4]);
     glBufferData(GL_ARRAY_BUFFER, sizeof(bitangent), bitangent, GL_STATIC_DRAW);
     glEnableVertexAttribArray(4);
     glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(bitangent[0]), 0);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.vbo_ids[5]);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
     return mesh;
 }
@@ -160,14 +160,14 @@ mesh_data gen_skybox() {
     glGenVertexArrays(1, &mesh.vao_id);
     glBindVertexArray(mesh.vao_id);
 
-    glGenBuffers(array_length(mesh.vbo_ids), mesh.vbo_ids);
+    glGenBuffers(2, mesh.vbo_ids);
 
     glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo_ids[0]);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(vertices[0]), 0);
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.vbo_ids[3]);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.vbo_ids[1]);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
 	return mesh;
@@ -193,7 +193,7 @@ mesh_data load_mdl(const char* name) {
     glGenVertexArrays(1, &mesh.vao_id);
     glBindVertexArray(mesh.vao_id);
 
-    glGenBuffers(array_length(mesh.vbo_ids), mesh.vbo_ids);
+    glGenBuffers(3, mesh.vbo_ids);
 
     glBindBuffer(GL_ARRAY_BUFFER, mesh.vbo_ids[0]);
     glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vertices.front()), vertices.data(), GL_STATIC_DRAW);
