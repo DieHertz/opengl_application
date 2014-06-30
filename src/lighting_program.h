@@ -22,6 +22,9 @@ struct lighting_program {
     GLuint shadow_samples_loc;
     GLuint shadow_distance_loc;
     GLuint depth_bias_loc;
+
+    GLuint shadow_maps_loc[MAX_LIGHTS];
+    GLuint shadow_bias_matrices_loc[MAX_LIGHTS];
 };
 
 namespace {
@@ -71,15 +74,24 @@ lighting_program create_lighting_program() {
     scope_exit({ glUseProgram(0); });
 
     for (auto i = 0; i < MAX_LIGHTS; ++i) {
-        const auto uname = "u_shadow_maps[" + std::to_string(i) + ']';
-        const auto uloc = glGetUniformLocation(program.id, uname.data());
+        const auto map_name = "u_shadow_maps[" + std::to_string(i) + ']';
+        program.shadow_maps_loc[i] = glGetUniformLocation(program.id, map_name.data());
 
-        glUniform1i(uloc, FIRST_SM_TIU - GL_TEXTURE0 + i);
+        const auto matrix_name = "u_shadow_bias_matrices[" + std::to_string(i) + ']';
+        program.shadow_bias_matrices_loc[i] = glGetUniformLocation(program.id, matrix_name.data());
+
+        glUniform1i(program.shadow_maps_loc[i], FIRST_SM_TIU - GL_TEXTURE0 + i);
     }
 
     for (auto& uniform : lighting_program_uniforms) {
         program.*uniform.ptr = glGetUniformLocation(program.id, uniform.name);
     }
+
+    glUniform1i(program.diffuse_map_loc, 0);
+    glUniform1i(program.normal_map_loc, 1 );
+    glUniform1i(program.height_map_loc, 2);
+    glUniform1i(program.occlusion_map_loc, 3);
+    glUniform1i(program.reflection_map_loc, 4);
 
     return program;
 }

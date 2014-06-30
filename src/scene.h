@@ -25,10 +25,13 @@ struct light {
 struct scene {
     std::vector<scene_object> objs;
     std::vector<light> lights;
-    mesh::mesh_data skybox;
 
-    GLuint skybox_tex_id;
-    GLuint skybox_program_id;
+    struct {
+        mesh::mesh_data mesh;
+        GLuint tex_id;
+        GLuint program_id;
+        GLuint map_loc;
+    } skybox;
 
     lighting_program program;
 };
