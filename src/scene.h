@@ -3,6 +3,7 @@
 
 #include "material.h"
 #include "mesh/mesh.h"
+#include "lighting_program.h"
 #include "gl/gl_include.h"
 #include <glm/vec4.hpp>
 #include <vector>
@@ -28,7 +29,8 @@ struct scene {
 
     GLuint skybox_tex_id;
     GLuint skybox_program_id;
-    GLuint lighting_program_id;
+
+    lighting_program program;
 };
 
 

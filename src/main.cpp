@@ -13,14 +13,19 @@
 #include <algorithm>
 #include <iostream>
 
-const auto MAX_LIGHTS = 8;
-const auto FIRST_SM_TIU = GL_TEXTURE10;
 const auto SM_WIDTH = 1024;
 const auto SM_HEIGHT = 1024;
 const auto SSAO_MAP_WIDTH = 640;
 const auto SSAO_MAP_HEIGHT = 480;
 const auto SPHERE_REFLECTION_MAP_WIDTH = 256;
 const auto SPHERE_REFLECTION_MAP_HEIGHT = 256;
+
+const glm::mat4 depth_bias_matrix{
+    0.5f,   0,      0,      0,
+    0,      0.5f,   0,      0,
+    0,      0,      0.5f,   0,
+    0.5f,   0.5f,   0.5f,   1
+};
 
 struct transformations {
     glm::mat4 depth_bias_matrix;
@@ -42,23 +47,11 @@ class handler {
         glm::vec3 up{0, 1, 0};
     } camera;
 
-    const glm::mat4 depth_bias_matrix{
-        0.5f,   0,      0,      0,
-        0,      0.5f,   0,      0,
-        0,      0,      0.5f,   0,
-        0.5f,   0.5f,   0.5f,   1
-    };
-
     glm::mat4 model, view;
     transformations transf;
 
     GLuint transf_buffer_id;
-    const GLuint transf_binding_point = 1;
-
     GLuint lights_buffer_id;
-    const GLuint lights_binding_point = 2;
-
-    const GLuint mtl_binding_point = 3;
 
     struct {
         GLuint fbo_id;
@@ -79,6 +72,7 @@ class handler {
         std::vector<GLuint> tex_ids;
         std::vector<glm::mat4> mvp_matrices;
         GLuint program_id;
+        bool update_required;
     } sm;
 
     struct {
@@ -86,8 +80,6 @@ class handler {
         GLuint renderbuffer_id;
         GLuint tex_id;
     } reflection;
-
-    bool shadow_maps_require_update = true;
 
     bool camera_dragging = false;
     glm::vec2 prev_mouse_pos;
@@ -356,37 +348,6 @@ class handler {
         return program_id;
     }
 
-    GLuint create_lighting_shader() {
-        const std::pair<const char*, GLenum> shaders[] {
-            { "shaders/lighting_vertex.glsl", GL_VERTEX_SHADER },
-            { "shaders/lighting_fragment.glsl", GL_FRAGMENT_SHADER },
-        };
-
-        const auto program_id = gl::load_shader_program(shaders);
-        gl::link_shader_program(program_id);
-
-        const auto transf_block_index = glGetUniformBlockIndex(program_id, "transformations");
-        glUniformBlockBinding(program_id, transf_block_index, transf_binding_point);
-
-        const auto lights_block_index = glGetUniformBlockIndex(program_id, "light_params");
-        glUniformBlockBinding(program_id, lights_block_index, lights_binding_point);
-
-        const auto mtl_block_index = glGetUniformBlockIndex(program_id, "material");
-        glUniformBlockBinding(program_id, mtl_block_index, mtl_binding_point);
-
-        glUseProgram(program_id);
-        scope_exit({ glUseProgram(0); });
-
-        for (auto i = 0; i < MAX_LIGHTS; ++i) {
-            const auto uname = "u_shadow_maps[" + std::to_string(i) + ']';
-            const auto uloc = glGetUniformLocation(program_id, uname.data());
-
-            glUniform1i(uloc, FIRST_SM_TIU - GL_TEXTURE0 + i);
-        }
-
-        return program_id;
-    }
-
     GLuint create_ssao_shader() {
         const std::pair<const char*, GLenum> shaders[] {
             { "shaders/occlusion_vertex.glsl", GL_VERTEX_SHADER },
@@ -488,13 +449,13 @@ class handler {
     }
 
     void update_shadow_bias_matrices() {
-        glUseProgram(scene.lighting_program_id);
+        glUseProgram(scene.program.id);
 
         for (size_t i = 0; i < scene.lights.size(); ++i) {
             const auto shadow_bias_matrix = depth_bias_matrix * sm.mvp_matrices[i];
 
             const auto uname = "u_shadow_bias_matrices[" + std::to_string(i) + ']';
-            const auto uloc = glGetUniformLocation(scene.lighting_program_id, uname.data());
+            const auto uloc = glGetUniformLocation(scene.program.id, uname.data());
 
             glUniformMatrix4fv(uloc, 1, GL_FALSE, glm::value_ptr(shadow_bias_matrix));
         }
@@ -627,10 +588,10 @@ class handler {
         glBindFramebuffer(GL_FRAMEBUFFER, reflection.fbo_id);
         scope_exit({ glBindFramebuffer(GL_FRAMEBUFFER, 0); });
 
-        glUseProgram(scene.lighting_program_id);
+        glUseProgram(scene.program.id);
         scope_exit({ glUseProgram(0); });
 
-        glUniform4fv(glGetUniformLocation(scene.lighting_program_id, "u_camera_pos_worldspace"), 1,
+        glUniform4fv(scene.program.camera_pos_worldspace_loc, 1,
             glm::value_ptr(camera.center));
 
         const auto old_transf = transf;
@@ -652,10 +613,14 @@ class handler {
             { { 0, 0, -1 }, { 0, -1, 0 } },
         };
 
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, ssao.tex_id);
         glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, ssao.tex_id);
+        glActiveTexture(GL_TEXTURE4);
         glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+        glUniform1i(scene.program.diffuse_map_loc, 0);
+        glUniform1i(scene.program.normal_map_loc, 1 );
+        glUniform1i(scene.program.height_map_loc, 2);
+        glUniform1i(scene.program.occlusion_map_loc, 3);
 
         for (auto face = 0; face < 6; ++face) {
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
@@ -668,15 +633,11 @@ class handler {
             update_transf_ubo();
 
             render_skybox();
-            glUseProgram(scene.lighting_program_id);
+            glUseProgram(scene.program.id);
 
             for (auto& obj : scene.objs) {
-                glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_diffuse_map"), 0);
-                glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_normal_map"), 1 );
-                glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_occlusion_map"), 2);
-                glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_height_map"), 4);
-                glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_diffuse_textured"), obj.diffuse_tex_id != 0);
-                glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_normal_textured"), obj.normal_tex_id != 0);
+                glUniform1i(scene.program.diffuse_textured_loc, obj.diffuse_tex_id != 0);
+                glUniform1i(scene.program.normal_textured_loc, obj.normal_tex_id != 0);
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, obj.diffuse_tex_id);
                 glActiveTexture(GL_TEXTURE1);
@@ -697,40 +658,32 @@ class handler {
 
         render_skybox();
 
-        glUseProgram(scene.lighting_program_id);
+        glUseProgram(scene.program.id);
         scope_exit({
             glUseProgram(0);
             glActiveTexture(GL_TEXTURE0);
         });
 
-        glUniform4fv(glGetUniformLocation(scene.lighting_program_id, "u_camera_pos_worldspace"), 1,
-            glm::value_ptr(camera.eye));
-
-        glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_shadow_samples"),
-            ui.sm.samples->get_value());
-        glUniform1f(glGetUniformLocation(scene.lighting_program_id, "u_shadow_distance"),
-            ui.sm.distance->get_value());
-
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, ssao.tex_id);
         glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, ssao.tex_id);
+        glActiveTexture(GL_TEXTURE4);
         glBindTexture(GL_TEXTURE_CUBE_MAP, reflection.tex_id);
 
-        glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_diffuse_map"), 0);
-        glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_normal_map"), 1 );
-        glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_occlusion_map"), 2);
-        glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_reflection_map"), 3);
-        glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_height_map"), 4);
-        glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_occlusion"), true);
+        glUniform4fv(scene.program.camera_pos_worldspace_loc, 1, glm::value_ptr(camera.eye));
+        glUniform1i(scene.program.diffuse_map_loc, 0);
+        glUniform1i(scene.program.normal_map_loc, 1 );
+        glUniform1i(scene.program.height_map_loc, 2);
+        glUniform1i(scene.program.occlusion_map_loc, 3);
+        glUniform1i(scene.program.reflection_map_loc, 4);
 
         for (auto obj : scene.objs) {
-            glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_diffuse_textured"), obj.diffuse_tex_id != 0);
-            glUniform1i(glGetUniformLocation(scene.lighting_program_id, "u_normal_textured"), obj.normal_tex_id != 0);
+            glUniform1i(scene.program.diffuse_textured_loc, obj.diffuse_tex_id != 0);
+            glUniform1i(scene.program.normal_textured_loc, obj.normal_tex_id != 0);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, obj.diffuse_tex_id);
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, obj.normal_tex_id);
-            glActiveTexture(GL_TEXTURE4);
+            glActiveTexture(GL_TEXTURE2);
             glBindTexture(GL_TEXTURE_2D, obj.height_tex_id);
             glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, obj.mtl_buffer_id);
             glBindVertexArray(obj.mesh.vao_id);
@@ -872,11 +825,21 @@ class handler {
         ui.sm.samples->set_size(150, 15);
         vlayout->add_widget(ui.sm.samples);
         ui.sm.samples->set_min_max(0, 16, 8);
+        ui.sm.samples->on_change([this] (const int samples) {
+            glUseProgram(scene.program.id);
+            glUniform1i(scene.program.shadow_samples_loc, samples);
+            glUseProgram(0);
+        });
 
         ui.sm.distance = new ui::slider<float>{"poisson_distance", ui.p_font, vlayout};
         ui.sm.distance->set_size(150, 15);
         vlayout->add_widget(ui.sm.distance);
         ui.sm.distance->set_min_max(100.0f, 1000.0f, 600.0f);
+        ui.sm.distance->on_change([this] (const float distance) {
+            glUseProgram(scene.program.id);
+            glUniform1f(scene.program.shadow_distance_loc, distance);
+            glUseProgram(0);
+        });
 
         vlayout->add_widget(new ui::text{"parallax mapping", ui.p_font, vlayout});
 
@@ -885,8 +848,8 @@ class handler {
         vlayout->add_widget(ui.parallax.scale);
         ui.parallax.scale->set_min_max(0, 0.1f, 0.005f);
         ui.parallax.scale->on_change([this] (const float scale) {
-            glUseProgram(scene.lighting_program_id);
-            glUniform1f(glGetUniformLocation(scene.lighting_program_id, "u_parallax_scale"), scale);
+            glUseProgram(scene.program.id);
+            glUniform1f(scene.program.parallax_scale_loc, scale);
             glUseProgram(0);
         });
 
@@ -895,8 +858,8 @@ class handler {
         vlayout->add_widget(ui.parallax.bias);
         ui.parallax.bias->set_min_max(0, 0.1f, 0);
         ui.parallax.bias->on_change([this] (const float bias) {
-            glUseProgram(scene.lighting_program_id);
-            glUniform1f(glGetUniformLocation(scene.lighting_program_id, "u_parallax_bias"), bias);
+            glUseProgram(scene.program.id);
+            glUniform1f(scene.program.parallax_bias_loc, bias);
             glUseProgram(0);
         });
 
@@ -941,7 +904,8 @@ public:
         depth.program_id = create_depth_shader();
         ssao.program_id = create_ssao_shader();
         sm.program_id = create_sm_shader();
-        scene.lighting_program_id = create_lighting_shader();
+
+        scene.program = create_lighting_program();
 
         create_transf_ubo();
         create_lights_ubo();
@@ -1012,13 +976,13 @@ public:
         update_lights_ubo();
         calculate_shadow_mvps();
 
-        shadow_maps_require_update = true;
+        sm.update_required = true;
 
         ui.fps->set_string(std::to_string(static_cast<int>(1.0f / elapsed)));
     }
 
     void onRender() {
-        if (shadow_maps_require_update) {
+        if (sm.update_required) {
             sm_prepass();
             update_shadow_bias_matrices();
         }

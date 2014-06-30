@@ -42,13 +42,17 @@ uniform bool u_normal_textured = false;
 
 uniform sampler2D u_diffuse_map;
 uniform sampler2D u_normal_map;
+uniform sampler2D u_height_map;
 uniform sampler2D u_occlusion_map;
 uniform samplerCube u_reflection_map;
-uniform sampler2D u_height_map;
 
 uniform vec3 u_camera_pos_worldspace;
 uniform float u_parallax_scale;
 uniform float u_parallax_bias;
+
+uniform int u_shadow_samples = 8;
+uniform float u_shadow_distance = 600.0;
+uniform float u_depth_bias = 0;
 
 uniform sampler2DShadow u_shadow_maps[MAX_LIGHTS];
 uniform mat4 u_shadow_bias_matrices[MAX_LIGHTS];
@@ -72,9 +76,6 @@ const vec2 poisson_disk[16] = vec2[](
     vec2(0.14383161, -0.14100790)
 );
 
-uniform int u_shadow_samples = 8;
-uniform float u_shadow_distance = 600.0;
-const float bias = 0;
 
 vec3 transform_and_dehomogenize(in vec3 original) {
     vec4 transformed = mv_matrix * vec4(original, 1);
@@ -135,7 +136,7 @@ void main() {
 
             float sampled_shadow = float(shadow_pcf(i,
                 vec3(shadow_coord_clipspace.xy + poisson_disk[index] / u_shadow_distance,
-                (shadow_coord.z - bias) / shadow_coord.w)));
+                (shadow_coord.z - u_depth_bias) / shadow_coord.w)));
 
             visibility -= visibility_per_sample * (1.0 - sampled_shadow);
         }
