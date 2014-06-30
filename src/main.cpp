@@ -1061,7 +1061,7 @@ public:
 
 int main() {
     try {
-        opengl_application<handler> app{4, 1, 640, 480, 4};
+        opengl_application<handler> app{4, 1, 1024, 768, 4};
         app.run();
     } catch (std::exception& e) {
         std::cerr << "exception: " << e.what() << std::endl;
