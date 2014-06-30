@@ -1055,8 +1055,6 @@ public:
         reflection_pass();
         lighting_pass();
 
-        // debug.draw(ssao.tex_id, { 0, 0, framebuffer_size.x / 2, framebuffer_size.y / 2 });
-
         draw_ui();
     }
 };
