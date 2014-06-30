@@ -125,7 +125,7 @@ protected:
     GLuint vao_id;
     GLuint vbo_id;
 
-    ui::color color = ui::color{ 0, 0, 0, 0.7f };
+    ui::color color = ui::color{ 1, 1, 1, 1 };
     ui::point pos = ui::point{};
     ui::size size = ui::size{};
 

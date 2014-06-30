@@ -54,6 +54,7 @@ struct transformations {
 class handler {
     scene_object ball;
     scene_object plane;
+    mesh::mesh_data skybox;
 
     std::vector<light> lights;
 
@@ -112,6 +113,8 @@ class handler {
     } reflection;
 
     GLuint skybox_tex_id;
+	GLuint skybox_program_id;
+
     GLuint lighting_program_id;
 
     bool shadow_maps_require_update = true;
@@ -153,6 +156,9 @@ class handler {
             ui::slider<float>* scale;
             ui::slider<float>* bias;
         } parallax;
+        struct {
+            ui::slider<float>* reflectance;
+        } ball;
 
         ui::text* fps;
     } ui;
@@ -171,9 +177,11 @@ class handler {
 
     void camera_up(const float degrees) {
         const auto ortho = glm::normalize(glm::cross(camera.eye, camera.up));
+        const auto new_eye = glm::vec3(glm::vec4(camera.eye, 1) * glm::rotate(glm::mat4(), glm::radians(degrees), ortho));
+        const auto angle_cos = glm::dot(glm::normalize(new_eye - camera.center), glm::normalize(camera.up));
+        const auto max_angle_cos = 0.95f;
 
-        camera.eye = glm::vec3(glm::vec4(camera.eye, 1) * glm::rotate(glm::mat4(), glm::radians(degrees), ortho));
-        // up = glm::vec3(glm::vec4(up, 0) * glm::rotate(glm::mat4(), glm::radians(degrees), ortho));
+        if (new_eye.y > 0 && angle_cos < max_angle_cos) camera.eye = new_eye;
     }
 
     void camera_left(const float degrees) {
@@ -347,6 +355,23 @@ class handler {
         }
     }
 
+    GLuint create_skybox_shader() {
+        const std::pair<const char*, GLenum> shaders[] {
+            { "shaders/skybox_vertex.glsl", GL_VERTEX_SHADER },
+            { "shaders/skybox_fragment.glsl", GL_FRAGMENT_SHADER },
+        };
+
+        const auto program_id = gl::load_shader_program(shaders);
+        gl::link_shader_program(program_id);
+
+        const auto transf_block_index = glGetUniformBlockIndex(program_id, "transformations");
+        if (transf_block_index != GL_INVALID_INDEX) {
+            glUniformBlockBinding(program_id, transf_block_index, transf_binding_point);
+        }
+
+        return program_id;
+    }
+
     GLuint create_depth_shader() {
         const std::pair<const char*, GLenum> shaders[] {
             { "shaders/depth_vertex.glsl", GL_VERTEX_SHADER },
@@ -450,9 +475,9 @@ class handler {
     scene_object create_ball() {
         const auto mesh = mesh::gen_sphere(0.5f, 32, 32);
 
-        const auto diffuse_tex_id = gl::load_png_texture("textures/ball12_diffuse.png");
+        const auto diffuse_tex_id = gl::load_png_texture("textures/ball_albedo.png");
 
-        const auto mtl = material{ { 0, 0, 0, 1 }, { 1, 1, 1, 1 }, 200, 0.25f };
+        const auto mtl = material{ { 0, 0, 0, 1 }, { 1, 1, 1, 1 }, 200, 0.09f };
 
         auto mtl_buffer_id = GLuint{};
         glGenBuffers(1, &mtl_buffer_id);
@@ -675,6 +700,9 @@ class handler {
 			look_at(camera.center, directions[face][0], directions[face][1]);
             update_transf_ubo();
 
+            render_skybox();
+            glUseProgram(lighting_program_id);
+
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion_map"), 2);
@@ -697,6 +725,8 @@ class handler {
     void lighting_pass() {
         glViewport(0, 0, static_cast<int>(framebuffer_size.x), static_cast<int>(framebuffer_size.y));
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        render_skybox();
 
         glUseProgram(lighting_program_id);
         scope_exit({
@@ -743,6 +773,14 @@ class handler {
         glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, ball.mtl_buffer_id);
         glBindVertexArray(ball.mesh.vao_id);
         glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
+    }
+
+    void render_skybox() {
+        glUseProgram(skybox_program_id);
+        glUniform1i(glGetUniformLocation(skybox_program_id, "u_skybox_map"), 0);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, skybox_tex_id);
+        glBindVertexArray(skybox.vao_id);
+        glDrawElements(skybox.primitive_mode, skybox.num_indices, skybox.index_type, nullptr);
     }
 
     GLuint create_ui_shader() {
@@ -897,7 +935,20 @@ class handler {
             glUseProgram(lighting_program_id);
             glUniform1f(glGetUniformLocation(lighting_program_id, "u_parallax_bias"), bias);
             glUseProgram(0);
-		});
+        });
+
+        vlayout->add_widget(new ui::text{"ball", ui.p_font, vlayout});
+
+        ui.ball.reflectance = new ui::slider<float>{"reflectance", ui.p_font, vlayout};
+        ui.ball.reflectance->set_size(150, 15);
+        vlayout->add_widget(ui.ball.reflectance);
+        ui.ball.reflectance->set_min_max(0, 1.0f, 0.07f);
+        ui.ball.reflectance->on_change([this] (const float reflectance) {
+            ball.mtl.reflectance = reflectance;
+            glBindBuffer(GL_UNIFORM_BUFFER, ball.mtl_buffer_id);
+            glBufferData(GL_UNIFORM_BUFFER, sizeof(ball.mtl), &ball.mtl, GL_DYNAMIC_DRAW);
+            glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        });
 
         ui.fps = new ui::text{"", ui.p_font, ui.panel.get()};
         ui.fps->set_pos(600, 0);
@@ -921,16 +972,12 @@ public:
 
         ball = create_ball();
         plane = create_plane();
-        // scene_model = {
-        //     mesh::load_mdl("models/ssao-test-scene.mdl"),
-        //     material{ { 0.707f, 0.707f, 0.707f, 1 }, { 0, 0, 0, 1 }, 0, 0 }
-        // };
-        // glGenBuffers(1, &scene_model.mtl_buffer_id);
-        // glBindBuffer(GL_UNIFORM_BUFFER, scene_model.mtl_buffer_id);
-        // glBufferData(GL_UNIFORM_BUFFER, sizeof(scene_model.mtl), &scene_model.mtl, GL_DYNAMIC_DRAW);
+        skybox = mesh::gen_skybox();
+        skybox_tex_id = gl::load_png_texture_cube("textures/skybox");
+        skybox_program_id = create_skybox_shader();
 
         lights = {
-            { { 20, 30, 10, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
+            { { 20, 15, 10, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
             { { 20, 20, -15, 1 }, { 0.7f, 0.7f, 0.7f, 1 } },
         };
 
@@ -948,7 +995,6 @@ public:
         create_lights_ubo();
         create_shadow_maps();
 
-        skybox_tex_id = gl::load_png_texture_cube("textures/skybox");
 
         create_fullscreen_quad();
 
@@ -975,7 +1021,7 @@ public:
 		const auto dir = camera.eye - camera.center;
         const auto dir_length = glm::length(dir);
         const auto scale = 1 - 0.1f * dy;
-        const auto length = glm::clamp(dir_length * scale, 1.0f, 50.0f);
+        const auto length = glm::clamp(dir_length * scale, 1.0f, 5.0f);
 
 		camera.eye = camera.center + length / dir_length * dir;
 		look_at(camera.eye, camera.center, camera.up);

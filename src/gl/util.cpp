@@ -92,8 +92,8 @@ GLuint load_png_texture_cube(const char* name) {
         unsigned long width, height;
         const auto bytes = load_png_bytes(std::string{name} + '/' + face_names[face] + ".png", width, height);
         glTexImage2D(
-            GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_RGB8,
-            width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, bytes.data()
+            GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, GL_RGBA,
+            width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, bytes.data()
         );
     }
 

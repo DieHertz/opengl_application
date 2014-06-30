@@ -20,7 +20,7 @@ public:
         value_text{new ui::text{"", p_font, this}}
     {
         label->update_buffers();
-        label->set_color({ 0, 0, 0, 1 });
+        label->set_color({ 1, 1, 1, 1 });
     }
 
     void set_min_max(const T min, const T max, const T val) {
