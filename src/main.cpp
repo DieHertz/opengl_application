@@ -35,6 +35,7 @@ struct scene_object {
     GLuint mtl_buffer_id;
     GLuint diffuse_tex_id;
     GLuint normal_tex_id;
+    GLuint height_tex_id;
 };
 
 struct light {
@@ -53,7 +54,6 @@ struct transformations {
 class handler {
     scene_object ball;
     scene_object plane;
-    scene_object scene_model;
 
     std::vector<light> lights;
 
@@ -149,6 +149,10 @@ class handler {
             ui::slider<int>* samples;
             ui::slider<float>* distance;
         } sm;
+        struct {
+            ui::slider<float>* scale;
+            ui::slider<float>* bias;
+        } parallax;
 
         ui::text* fps;
     } ui;
@@ -475,6 +479,12 @@ class handler {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
+        const auto height_tex_id = gl::load_png_texture("textures/table_cloth_height.png");
+        glGenerateMipmap(GL_TEXTURE_2D);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
         const auto mtl = material{};
 
         auto mtl_buffer_id = GLuint{};
@@ -482,7 +492,7 @@ class handler {
         glBindBuffer(GL_UNIFORM_BUFFER, mtl_buffer_id);
         glBufferData(GL_UNIFORM_BUFFER, sizeof(mtl), &mtl, GL_DYNAMIC_DRAW);
 
-        return { mesh, mtl, mtl_buffer_id, diffuse_tex_id, normal_tex_id };
+        return { mesh, mtl, mtl_buffer_id, diffuse_tex_id, normal_tex_id, height_tex_id };
     }
 
     void update_shadow_bias_matrices() {
@@ -523,9 +533,6 @@ class handler {
 
             glBindVertexArray(ball.mesh.vao_id);
             glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
-
-            glBindVertexArray(scene_model.mesh.vao_id);
-            glDrawElements(scene_model.mesh.primitive_mode, scene_model.mesh.num_indices, scene_model.mesh.index_type, nullptr);
         }
     }
 
@@ -547,9 +554,6 @@ class handler {
 
         glBindVertexArray(ball.mesh.vao_id);
         glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
-
-        glBindVertexArray(scene_model.mesh.vao_id);
-        glDrawElements(scene_model.mesh.primitive_mode, scene_model.mesh.num_indices, scene_model.mesh.index_type, nullptr);
 
         transf.depth_bias_matrix = depth_bias_matrix * transf.mvp_matrix;
         update_transf_ubo();
@@ -636,6 +640,9 @@ class handler {
         glUseProgram(lighting_program_id);
         scope_exit({ glUseProgram(0); });
 
+        glUniform4fv(glGetUniformLocation(lighting_program_id, "u_camera_pos_worldspace"), 1,
+            glm::value_ptr(camera.center));
+
         const auto old_transf = transf;
         scope_exit({
             transf = old_transf;
@@ -671,6 +678,7 @@ class handler {
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion_map"), 2);
+            glUniform1i(glGetUniformLocation(lighting_program_id, "u_height_map"), 4);
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_textured"), true);
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_textured"), plane.normal_tex_id != 0);
             glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion"), false);
@@ -678,6 +686,8 @@ class handler {
             glBindTexture(GL_TEXTURE_2D, plane.diffuse_tex_id);
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, plane.normal_tex_id);
+            glActiveTexture(GL_TEXTURE4);
+            glBindTexture(GL_TEXTURE_2D, plane.height_tex_id);
             glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, plane.mtl_buffer_id);
             glBindVertexArray(plane.mesh.vao_id);
             glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
@@ -694,6 +704,9 @@ class handler {
             glActiveTexture(GL_TEXTURE0);
         });
 
+        glUniform4fv(glGetUniformLocation(lighting_program_id, "u_camera_pos_worldspace"), 1,
+            glm::value_ptr(camera.eye));
+
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_shadow_samples"),
             ui.sm.samples->get_value());
         glUniform1f(glGetUniformLocation(lighting_program_id, "u_shadow_distance"),
@@ -705,6 +718,8 @@ class handler {
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_map"), 0);
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_map"), 1 );
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion_map"), 2);
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_reflection_map"), 3);
+        glUniform1i(glGetUniformLocation(lighting_program_id, "u_height_map"), 4);
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_occlusion"), true);
 
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_textured"), true);
@@ -713,13 +728,14 @@ class handler {
         glBindTexture(GL_TEXTURE_2D, plane.diffuse_tex_id);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, plane.normal_tex_id);
+        glActiveTexture(GL_TEXTURE4);
+        glBindTexture(GL_TEXTURE_2D, plane.height_tex_id);
         glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, plane.mtl_buffer_id);
         glBindVertexArray(plane.mesh.vao_id);
         glDrawElements(plane.mesh.primitive_mode, plane.mesh.num_indices, plane.mesh.index_type, nullptr);
 
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_textured"), true);
         glUniform1i(glGetUniformLocation(lighting_program_id, "u_normal_textured"), ball.normal_tex_id != 0);
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_reflection_map"), 3);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, ball.diffuse_tex_id);
         glActiveTexture(GL_TEXTURE3);
@@ -727,11 +743,6 @@ class handler {
         glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, ball.mtl_buffer_id);
         glBindVertexArray(ball.mesh.vao_id);
         glDrawElements(ball.mesh.primitive_mode, ball.mesh.num_indices, ball.mesh.index_type, nullptr);
-
-        glUniform1i(glGetUniformLocation(lighting_program_id, "u_diffuse_textured"), false);
-        glBindVertexArray(scene_model.mesh.vao_id);
-        glBindBufferBase(GL_UNIFORM_BUFFER, mtl_binding_point, scene_model.mtl_buffer_id);
-        glDrawElements(scene_model.mesh.primitive_mode, scene_model.mesh.num_indices, scene_model.mesh.index_type, nullptr);
     }
 
     GLuint create_ui_shader() {
@@ -865,6 +876,28 @@ class handler {
         ui.sm.distance->set_size(150, 15);
         vlayout->add_widget(ui.sm.distance);
         ui.sm.distance->set_min_max(100.0f, 1000.0f, 600.0f);
+
+        vlayout->add_widget(new ui::text{"parallax mapping", ui.p_font, vlayout});
+
+        ui.parallax.scale = new ui::slider<float>{"scale", ui.p_font, vlayout};
+        ui.parallax.scale->set_size(150, 15);
+        vlayout->add_widget(ui.parallax.scale);
+        ui.parallax.scale->set_min_max(0, 0.1f, 0.005f);
+        ui.parallax.scale->on_change([this] (const float scale) {
+            glUseProgram(lighting_program_id);
+            glUniform1f(glGetUniformLocation(lighting_program_id, "u_parallax_scale"), scale);
+            glUseProgram(0);
+        });
+
+        ui.parallax.bias = new ui::slider<float>{"bias", ui.p_font, vlayout};
+        ui.parallax.bias->set_size(150, 15);
+        vlayout->add_widget(ui.parallax.bias);
+        ui.parallax.bias->set_min_max(0, 0.1f, 0);
+        ui.parallax.bias->on_change([this] (const float bias) {
+            glUseProgram(lighting_program_id);
+            glUniform1f(glGetUniformLocation(lighting_program_id, "u_parallax_bias"), bias);
+            glUseProgram(0);
+		});
 
         ui.fps = new ui::text{"", ui.p_font, ui.panel.get()};
         ui.fps->set_pos(600, 0);

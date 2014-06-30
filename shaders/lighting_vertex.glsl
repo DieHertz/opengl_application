@@ -11,6 +11,7 @@ out vec3 v_normal;
 out vec2 v_tex_coord;
 out vec3 v_tangent;
 out vec3 v_bitangent;
+out vec3 v_camera_pos_tangentspace;
 
 layout(std140) uniform transformations {
     mat4 depth_bias_matrix;
@@ -20,6 +21,9 @@ layout(std140) uniform transformations {
     mat3 normal_matrix;
 };
 
+uniform bool u_normal_textured;
+uniform vec3 u_camera_pos_worldspace;
+
 void main() {
     gl_Position = mvp_matrix * vec4(position, 1);
 
@@ -28,4 +32,9 @@ void main() {
     v_tex_coord = tex_coord;
     v_tangent = tangent;
     v_bitangent = bitangent;
+
+    if (u_normal_textured) {
+        mat3 tbn_matrix = mat3(v_tangent, v_bitangent, v_normal);
+        v_camera_pos_tangentspace = transpose(tbn_matrix) * (u_camera_pos_worldspace - position);
+    }
 }
